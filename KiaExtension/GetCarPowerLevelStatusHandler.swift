@@ -9,6 +9,7 @@
 import Foundation
 import Intents
 import UIKit
+import Combine
 
 /// Handler for INGetCarPowerLevelStatusIntent that provides battery status information to Apple Maps and Siri
 /// Supports both cached data for quick responses and live data fetching with background updates
@@ -26,6 +27,10 @@ class GetCarPowerLevelStatusHandler: NSObject, INGetCarPowerLevelStatusIntentHan
 
     /// Timer for sending periodic updates to Apple Maps
     private var timer: Timer?
+    /// MQTT Manager for real-time vehicle status updates
+    private var mqttManager: MQTTManager?
+    /// Combine cancellable for MQTT subscription
+    private var mqttCancellable: AnyCancellable?
     /// Mock flag - true on simulator for testing, false on device
     #if targetEnvironment(simulator)
         private let mock: Bool = true
@@ -152,51 +157,124 @@ class GetCarPowerLevelStatusHandler: NSObject, INGetCarPowerLevelStatusIntentHan
     }
 
     /// Starts sending periodic updates to Apple Maps for live battery status monitoring
+    /// Uses cached data for initial update, then relies on MQTT for real-time updates
     /// - Parameters:
     ///   - intent: The intent to provide updates for
     ///   - observer: Observer that receives the updates
     func startSendingUpdates(for intent: INGetCarPowerLevelStatusIntent, to observer: any INGetCarPowerLevelStatusIntentResponseObserver) {
-        logDebug("Updater: Starting updating car status", category: .vehicle)
+        logDebug("Updater: Starting updating car status with MQTT", category: .vehicle)
+        
+        guard let identifier = intent.carName?.vocabularyIdentifier, let carId = UUID(uuidString: identifier) else {
+            logError("Updater: Failed to find car name '\(intent.carName?.spokenPhrase ?? "Unknown")'", category: .vehicle)
+            observer.didUpdate(getCarPowerLevelStatus: .init(code: .failureRequiringAppLaunch, userActivity: nil))
+            return
+        }
+        
+        manager = VehicleManager(id: carId)
         let lastBatteryCharge = BatteryChargeBox()
-        timer = Timer.scheduledTimer(withTimeInterval: 60 * 4, repeats: true, block: { [weak self] _ in
-            guard let identifier = intent.carName?.vocabularyIdentifier, let carId = UUID(uuidString: identifier) else {
-                logError("Updater: Failed to find car name '\(intent.carName?.spokenPhrase ?? "Unknown")'", category: .vehicle)
-                observer.didUpdate(getCarPowerLevelStatus: .init(code: .failureRequiringAppLaunch, userActivity: nil))
-                return
+        
+        // Send initial update from cached data immediately
+        if let cachedData = try? manager.vehicleStatus {
+            logDebug("Updater: Sending initial update from cached data", category: .vehicle)
+            let response = cachedData.state.toIntentResponse(carId: carId, vehicleParameters: vehicleParameters)
+            lastBatteryCharge.value = updateCharge(observer: observer, response: response, lastBatteryCharge: lastBatteryCharge.value)
+        }
+        
+        // Start MQTT connection and subscription in a Task to handle MainActor isolation
+        Task { @MainActor in
+            // Initialize MQTT Manager if not already created (MainActor-isolated)
+            if mqttManager == nil {
+                mqttManager = MQTTManager(api: api)
             }
-
+            
+            // Subscribe to MQTT updates
+            mqttCancellable = mqttManager?.$vehicleStatus
+                .compactMap { $0 } // Filter out nil values
+                .sink { [weak self] mqttStatus in
+                    guard let self = self else { return }
+                    
+                    logDebug("Updater: Received MQTT update", category: .mqtt)
+                    
+                    // Convert MQTT status to VehicleStatusResponse.State for intent response
+                    let vehicleStatus = mqttStatus.toVehicleStatus()
+                    let state = VehicleStatusResponse.State(vehicle: vehicleStatus)
+                    let response = state.toIntentResponse(carId: carId, vehicleParameters: self.vehicleParameters)
+                    
+                    // Only update if battery charge has changed
+                    lastBatteryCharge.value = self.updateCharge(
+                        observer: observer,
+                        response: response,
+                        lastBatteryCharge: lastBatteryCharge.value
+                    )
+                }
+            
+            do {
+                // Get the vehicle information
+                let vehicleResponse = try await api.vehicles()
+                guard let vehicle = vehicleResponse.vehicles.first(where: { $0.vehicleId == carId }) else {
+                    logError("Updater: Vehicle not found for ID: \(carId)", category: .vehicle)
+                    return
+                }
+                
+                // Check if vehicle is charging - if so, activate MQTT
+                if let cachedData = try? manager.vehicleStatus, 
+                   cachedData.state.vehicle.isCharging {
+                    logInfo("Updater: Vehicle is charging, activating MQTT", category: .mqtt)
+                    try await mqttManager?.activateMQTTCommunication(for: vehicle)
+                } else {
+                    logDebug("Updater: Vehicle not charging, MQTT not activated", category: .mqtt)
+                }
+            } catch {
+                logError("Updater: Failed to start MQTT: \(error.localizedDescription)", category: .mqtt)
+            }
+        }
+        
+        // Keep a fallback timer for non-MQTT updates (every 10 minutes instead of 4)
+        // This is only used when MQTT is not connected
+        timer = Timer.scheduledTimer(withTimeInterval: 60 * 10, repeats: true) { [weak self] _ in
             guard let self = self else { return }
-            self.manager = VehicleManager(id: carId)
-
-            if self.mock {
-                Thread.sleep(until: .now + 4) // Just to simulate server request/response time
-                logDebug("Updater: Returning mocking data", category: .vehicle)
-                let response = VehicleStatusResponse.lowBatteryPreview.state.toIntentResponse(carId: carId, vehicleParameters: vehicleParameters)
-                lastBatteryCharge.value = self.updateCharge(observer: observer, response: response, lastBatteryCharge: lastBatteryCharge.value)
-            } else if let cachedData = try? self.manager.vehicleStatus {
-                logDebug("Updater: Using cached data", category: .vehicle)
-                let response = cachedData.state.toIntentResponse(carId: carId, vehicleParameters: vehicleParameters)
-                lastBatteryCharge.value = self.updateCharge(observer: observer, response: response, lastBatteryCharge: lastBatteryCharge.value)
-            }
-
-            Task {
-                logDebug("Updater: Update vehicle data", category: .vehicle)
-                await self.credentialsHandler.continueOrWaitForCredentials()
-                let response = await self.fetchCarStatus(carId: carId)
-
-                await MainActor.run {
-                    lastBatteryCharge.value = self.updateCharge(observer: observer, response: response, lastBatteryCharge: lastBatteryCharge.value)
+            
+            Task { @MainActor in
+                // Only fetch from API if MQTT is not connected
+                if self.mqttManager?.connectionStatus != .connected {
+                    logDebug("Updater: MQTT not connected, fetching from API", category: .vehicle)
+                    
+                    // Fetch in background task
+                    Task.detached {
+                        await self.credentialsHandler.continueOrWaitForCredentials()
+                        let response = await self.fetchCarStatus(carId: carId)
+                        
+                        await MainActor.run {
+                            lastBatteryCharge.value = self.updateCharge(
+                                observer: observer,
+                                response: response,
+                                lastBatteryCharge: lastBatteryCharge.value
+                            )
+                        }
+                    }
                 }
             }
-        })
+        }
     }
 
-    /// Stops sending periodic updates and invalidates the timer
+    /// Stops sending periodic updates, disconnects MQTT, and invalidates the timer
     /// - Parameter intent: The intent to stop updates for
     func stopSendingUpdates(for _: INGetCarPowerLevelStatusIntent) {
-        logDebug("Updater: Stopping updating car status", category: .vehicle)
+        logDebug("Updater: Stopping updating car status and MQTT", category: .vehicle)
+        
+        // Stop timer
         timer?.invalidate()
         timer = nil
+        
+        // Cancel MQTT subscription
+        mqttCancellable?.cancel()
+        mqttCancellable = nil
+        
+        // Disconnect MQTT (needs to be done on MainActor)
+        Task { @MainActor in
+            mqttManager?.disconnect()
+            mqttManager = nil
+        }
     }
 
     /// Updates observer with new battery status only if the charge level has changed
