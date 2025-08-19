@@ -164,7 +164,7 @@ class Api {
     /// - Returns: Complete vehicle response containing all registered vehicles
     /// - Throws: Network errors or authentication failures
     func vehicles() async throws -> VehicleResponse {
-        guard let authorization = authorization else {
+        guard authorization != nil else {
             throw ApiError.unauthorized
         }
         return try await provider.request(endpoint: .vehicles).response()
@@ -215,7 +215,7 @@ class Api {
     ///   - pin: Vehicle PIN (required for climate control)
     /// - Returns: Operation result ID for tracking
     func startClimate(_ vehicleId: UUID, options: ClimateControlOptions, pin: String) async throws -> UUID {
-        guard let authorization = authorization?.accessToken else {
+        guard authorization?.accessToken != nil else {
             throw ApiError.unauthorized
         }
         guard !pin.isEmpty else {
@@ -251,7 +251,7 @@ class Api {
     /// - Parameter vehicleId: The vehicle ID
     /// - Returns: Operation result ID for tracking
     func stopClimate(_ vehicleId: UUID) async throws -> UUID {
-        guard let authorization = authorization?.accessToken else {
+        guard authorization?.accessToken != nil else {
             throw ApiError.unauthorized
         }
         return try await provider.request(
@@ -305,7 +305,7 @@ extension Api {
      * MQTT Step 3: Get vehicle metadata and supported protocols for MQTT
      * GET /api/v3/servicehub/vehicles/metadatalist?carId=<carId>&brand=K
      */
-    func fetchMQTTVehicleMetadata(for vehicle: Vehicle, clientId: String) async throws -> [MQTTVehicleMetadata] {
+    func fetchMQTTVehicleMetadata(for vehicleId: UUID, clientId: String) async throws -> [MQTTVehicleMetadata] {
         guard authorization?.accessToken != nil else {
             throw ApiError.unauthorized
         }
@@ -313,7 +313,7 @@ extension Api {
         let response: VehicleMetadataResponse = try await provider.request(
             endpoint: .mqttVehicleMetadata,
             queryItems: [
-                URLQueryItem(name: "carId", value: vehicle.vehicleId.uuidString),
+                URLQueryItem(name: "carId", value: vehicleId.uuidString),
                 URLQueryItem(name: "brand", value: configuration.brandCode)
             ],
             headers: [
@@ -328,7 +328,7 @@ extension Api {
      * MQTT Step 4: Subscribe to specific vehicle protocols for MQTT communication
      * POST /api/v3/servicehub/device/protocol
      */
-    func subscribeMQTTVehicleProtocols(for vehicle: Vehicle, clientId: String, protocolId: any MQTTProtocol, protocols: [any MQTTProtocol]) async throws {
+    func subscribeMQTTVehicleProtocols(for vehicleId: UUID, clientId: String, protocolId: any MQTTProtocol, protocols: [any MQTTProtocol]) async throws {
         guard authorization?.accessToken != nil else {
             throw ApiError.unauthorized
         }
@@ -337,7 +337,7 @@ extension Api {
         let request = ProtocolSubscriptionRequest(
             protocols: protocols,
             protocolId: protocolId,
-            carId: vehicle.vehicleId.uuidString,
+            carId: vehicleId,
             brand: configuration.brandCode
         )
 

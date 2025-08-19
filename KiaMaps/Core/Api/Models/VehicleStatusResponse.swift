@@ -103,11 +103,6 @@ struct VehicleMQTTStatusResponse: Codable {
         case lastUpdateTime = "latestUpdateTime"
         case state
     }
-    
-    /// Convert MQTT response to VehicleStatus for UI updates
-    func toVehicleStatus() -> VehicleStatus {
-        return state.vehicle
-    }
 }
 
 // MARK: - VehicleStatus

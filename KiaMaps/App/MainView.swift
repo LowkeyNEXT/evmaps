@@ -402,7 +402,7 @@ struct MainView: View {
         
         Task {
             do {
-                try await mqttManager.activateMQTTCommunication(for: selectedVehicle)
+                try await mqttManager.activateMQTTCommunication(for: selectedVehicle.vehicleId)
                 await MainActor.run {
                     mqttConnectionStatus = mqttManager.connectionStatus
                 }

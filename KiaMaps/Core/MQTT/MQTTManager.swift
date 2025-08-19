@@ -96,7 +96,7 @@ class MQTTManager: ObservableObject {
     /**
      * Activates MQTT communication following the documented sequence
      */
-    func activateMQTTCommunication(for vehicle: Vehicle) async throws {
+    func activateMQTTCommunication(for vehicleId: UUID) async throws {
         logDebug("MQTT 5.0 activation sequence started", category: .mqtt)
         connectionStatus = .connecting
         lastError = nil
@@ -110,14 +110,14 @@ class MQTTManager: ObservableObject {
             self.deviceInfo = deviceInfo
             
             // Step 3: Get vehicle metadata and protocols
-            let vehicleMetadata = try await api.fetchMQTTVehicleMetadata(for: vehicle, clientId: deviceInfo.clientId)
+            let vehicleMetadata = try await api.fetchMQTTVehicleMetadata(for: vehicleId, clientId: deviceInfo.clientId)
             self.vehicleMetadata = vehicleMetadata
 
             let protocols: [any MQTTProtocol] = [MQTTBaseProtocolIds.connection, MQTTBaseProtocolIds.vss]
 
             // Step 4: Subscribe to vehicle protocols via HTTP
             try await api.subscribeMQTTVehicleProtocols(
-                for: vehicle,
+                for: vehicleId,
                 clientId: deviceInfo.clientId,
                 protocolId: MQTTBaseProtocolIds.vehicleCcuUpdate,
                 protocols: protocols

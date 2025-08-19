@@ -178,7 +178,7 @@ struct VehicleMetadataResponse: Decodable {
 struct ProtocolSubscriptionRequest: Encodable {
     let protocols: [any MQTTProtocol]
     let protocolId: any MQTTProtocol
-    let carId: String
+    let carId: UUID
     let brand: String
 
     enum CodingKeys: String, CodingKey {
