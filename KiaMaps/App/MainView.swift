@@ -8,6 +8,7 @@
 
 import SwiftUI
 import os.log
+import Combine
 
 struct MainView: View {
     let configuration: AppConfiguration.Type
@@ -43,11 +44,20 @@ struct MainView: View {
     @State var lastUpdateDate: Date?
     @State var showingProfile = false
     @State var loginRetry = false
+    
+    // MQTT Integration State
+    @StateObject private var mqttManager: MQTTManager
+    @State private var currentVehicleStatus: VehicleStatus?
+    @State private var mqttConnectionStatus: MQTTConnectionStatus = .disconnected
+    @State private var receivedMQTTUpdate = false
 
     init(configuration: AppConfiguration.Type) {
         self.configuration = configuration
-        api = Api(configuration: configuration.apiConfiguration, rsaService: .init())
+        let api = Api(configuration: configuration.apiConfiguration, rsaService: .init())
+        self.api = api
         state = .loading
+
+        self._mqttManager = StateObject(wrappedValue: MQTTManager(api: api))
     }
 
     var body: some View {
@@ -102,6 +112,18 @@ struct MainView: View {
         .sheet(isPresented: $showingProfile) {
             UserProfileView(api: api, selectedVehicle: selectedVehicle)
         }
+        .onAppear {
+            setupMQTTIntegration()
+        }
+        .onChange(of: selectedVehicleStatus?.state.vehicle.isCharging) { _, isCharging in
+            handleChargingStateChange(isCharging ?? false)
+        }
+        .onChange(of: mqttManager.connectionStatus) { _, connectionStatus in
+            mqttConnectionStatus = connectionStatus
+        }
+        .onReceive(mqttManager.$vehicleStatus) { vehicleStatus in
+            handleMQTTDataUpdate(vehicleStatus)
+        }
     }
 
 
@@ -110,11 +132,17 @@ struct MainView: View {
     @ViewBuilder
     var contentView: some View {
         if let selectedVehicle = selectedVehicle, let selectedVehicleStatus = selectedVehicleStatus {
+            // Use MQTT-updated status if available, otherwise use API status
+            let currentStatus = currentVehicleStatus ?? selectedVehicleStatus.state.vehicle
+            
             OverviewPageView(
+                brandName: api.configuration.brandName,
                 vehicle: selectedVehicle,
-                status: selectedVehicleStatus.state.vehicle,
+                status: currentStatus,
                 lastUpdateTime: selectedVehicleStatus.lastUpdateTime,
-                isActive: true
+                isActive: true,
+                mqttConnectionStatus: mqttConnectionStatus,
+                receivedMQTTUpdate: receivedMQTTUpdate
             ) {
                 await refreshData()
             }
@@ -323,5 +351,74 @@ struct MainView: View {
 
         // Dismiss to return to root (login screen)
         dismiss()
+    }
+    
+    // MARK: - MQTT Integration
+    
+    private func setupMQTTIntegration() {
+        // Set up MQTT status monitoring
+        mqttConnectionStatus = mqttManager.connectionStatus
+        
+        // Start MQTT if car is already charging
+        if selectedVehicleStatus?.state.vehicle.isCharging == true {
+            startMQTTCommunication()
+        }
+    }
+    
+    private func handleMQTTDataUpdate(_ vehicleStatus: VehicleMQTTStatusResponse?) {
+        // Handle MQTT data updates here
+        guard let vehicleStatus = vehicleStatus else { return }
+        receivedMQTTUpdate = true
+
+        if let status = selectedVehicleStatus {
+            selectedVehicleStatus = .init(
+                resultCode: status.resultCode,
+                serviceNumber: status.serviceNumber,
+                returnCode: status.returnCode,
+                lastUpdateTime: vehicleStatus.lastUpdateTime,
+                state: .init(vehicle: vehicleStatus.state.vehicle)
+            )
+        } else {
+            selectedVehicleStatus = .init(
+                resultCode: "S",
+                serviceNumber: "0",
+                returnCode: "0",
+                lastUpdateTime: vehicleStatus.lastUpdateTime,
+                state: .init(vehicle: vehicleStatus.state.vehicle)
+            )
+        }
+    }
+    
+    private func handleChargingStateChange(_ isCharging: Bool) {
+        if isCharging {
+            startMQTTCommunication()
+        } else {
+            stopMQTTCommunication()
+        }
+    }
+    
+    private func startMQTTCommunication() {
+        guard let selectedVehicle = selectedVehicle, mqttConnectionStatus == .disconnected else { return }
+        
+        Task {
+            do {
+                try await mqttManager.activateMQTTCommunication(for: selectedVehicle)
+                await MainActor.run {
+                    mqttConnectionStatus = mqttManager.connectionStatus
+                }
+            } catch {
+                logError("Failed to start MQTT communication: \(error.localizedDescription)", category: .mqtt)
+                await MainActor.run {
+                    mqttConnectionStatus = .error
+                }
+            }
+        }
+    }
+    
+    private func stopMQTTCommunication() {
+        mqttManager.disconnect()
+        mqttConnectionStatus = .disconnected
+        receivedMQTTUpdate = false
+        currentVehicleStatus = nil // Reset to use API data
     }
 }

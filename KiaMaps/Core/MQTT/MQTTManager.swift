@@ -62,16 +62,13 @@ enum MQTTError: LocalizedError {
  */
 @MainActor
 class MQTTManager: ObservableObject {
-    typealias VehicleStatusCallback = (VehicleMQTTStatusResponse) -> Void
-
     // MARK: - Published Properties
     
     @Published var connectionStatus: MQTTConnectionStatus = .disconnected
     @Published var lastError: String?
     @Published var receivedMessageCount: Int = 0
     @Published var latestData: [String: Any]?
-
-    var vehicleStatusCallback: VehicleStatusCallback?
+    @Published var vehicleStatus: VehicleMQTTStatusResponse? = nil
 
     // MARK: - Private Properties
 
@@ -342,7 +339,7 @@ extension MQTTManager: @preconcurrency CocoaMQTT5Delegate {
                     if protocolId == .vss {
                         let vehicleStatus = try decoder.decode(VehicleMQTTStatusResponse.self, from: data)
                         logInfo("Last vehicle data update received at: \(vehicleStatus.lastUpdateTime)", category: .mqtt)
-                        vehicleStatusCallback?(vehicleStatus)
+                        self.vehicleStatus = vehicleStatus
                     } else if protocolId == .connection {
                         let connectionStatus = try decoder.decode(ConnectionStateResponse.self, from: data)
                         logDebug("Connection state changed to: \(connectionStatus.state.rawValue)", category: .mqtt)
