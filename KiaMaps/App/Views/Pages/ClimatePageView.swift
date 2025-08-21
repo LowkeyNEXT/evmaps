@@ -10,14 +10,14 @@ import SwiftUI
 
 /// Climate control page with temperature dial and status
 struct ClimatePageView: View {
-    let status: VehicleStatus
+    let status: VehicleState
     let isActive: Bool
     
     var body: some View {
         ScrollView {
             VStack(spacing: KiaDesign.Spacing.xl) {
                 ClimateControlView(
-                    vehicleStatus: status,
+                    vehicleState: status,
                     unit: .celsius
                 )
                 

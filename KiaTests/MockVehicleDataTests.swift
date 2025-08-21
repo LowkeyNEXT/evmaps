@@ -14,146 +14,146 @@ final class MockVehicleDataTests: XCTestCase {
     // MARK: - Data Integrity Tests
     
     func testStandardScenarioDataIntegrity() throws {
-        let vehicleStatus = MockVehicleData.standard
+        let VehicleState = MockVehicleData.standard
         
         // Verify battery level
-        XCTAssertEqual(vehicleStatus.green.batteryManagement.batteryRemain.ratio, 75)
+        XCTAssertEqual(VehicleState.green.batteryManagement.batteryRemain.ratio, 75)
         
         // Verify not charging
-        XCTAssertEqual(vehicleStatus.location?.heading, 0)
+        XCTAssertEqual(VehicleState.location?.heading, 0)
 
         // Verify driving ready
-        XCTAssertEqual(vehicleStatus.green.drivingReady, true)
-        XCTAssertEqual(vehicleStatus.drivingReady, true)
+        XCTAssertEqual(VehicleState.green.drivingReady, true)
+        XCTAssertEqual(VehicleState.drivingReady, true)
         
         // Verify basic structure exists
-        XCTAssertNotNil(vehicleStatus.body)
-        XCTAssertNotNil(vehicleStatus.cabin)
-        XCTAssertNotNil(vehicleStatus.chassis)
-        XCTAssertNotNil(vehicleStatus.drivetrain)
-        XCTAssertNotNil(vehicleStatus.electronics)
-        XCTAssertNotNil(vehicleStatus.green)
-        XCTAssertNotNil(vehicleStatus.service)
-        XCTAssertNotNil(vehicleStatus.remoteControl)
-        XCTAssertNotNil(vehicleStatus.location)
+        XCTAssertNotNil(VehicleState.body)
+        XCTAssertNotNil(VehicleState.cabin)
+        XCTAssertNotNil(VehicleState.chassis)
+        XCTAssertNotNil(VehicleState.drivetrain)
+        XCTAssertNotNil(VehicleState.electronics)
+        XCTAssertNotNil(VehicleState.green)
+        XCTAssertNotNil(VehicleState.service)
+        XCTAssertNotNil(VehicleState.remoteControl)
+        XCTAssertNotNil(VehicleState.location)
     }
     
     func testChargingScenarioDataIntegrity() throws {
-        let vehicleStatus = MockVehicleData.charging
+        let VehicleState = MockVehicleData.charging
         
         // Verify battery level
-        XCTAssertEqual(vehicleStatus.green.batteryManagement.batteryRemain.ratio, 45)
+        XCTAssertEqual(VehicleState.green.batteryManagement.batteryRemain.ratio, 45)
         
         // Verify charging (heading > 0 indicates charging in mock)
-        XCTAssertEqual(vehicleStatus.location?.heading, 180)
+        XCTAssertEqual(VehicleState.location?.heading, 180)
 
         // Verify not driving ready when charging
-        XCTAssertEqual(vehicleStatus.green.drivingReady, false)
-        XCTAssertEqual(vehicleStatus.drivingReady, false)
+        XCTAssertEqual(VehicleState.green.drivingReady, false)
+        XCTAssertEqual(VehicleState.drivingReady, false)
         
         // Verify charging times are set
-        XCTAssertGreaterThan(vehicleStatus.green.chargingInformation.estimatedTime.iccb, 0)
-        XCTAssertGreaterThan(vehicleStatus.green.chargingInformation.estimatedTime.standard, 0)
-        XCTAssertGreaterThan(vehicleStatus.green.chargingInformation.estimatedTime.quick, 0)
+        XCTAssertGreaterThan(VehicleState.green.chargingInformation.estimatedTime.iccb, 0)
+        XCTAssertGreaterThan(VehicleState.green.chargingInformation.estimatedTime.standard, 0)
+        XCTAssertGreaterThan(VehicleState.green.chargingInformation.estimatedTime.quick, 0)
     }
     
     func testLowBatteryScenarioDataIntegrity() throws {
-        let vehicleStatus = MockVehicleData.lowBattery
+        let VehicleState = MockVehicleData.lowBattery
         
         // Verify low battery level
-        XCTAssertEqual(vehicleStatus.green.batteryManagement.batteryRemain.ratio, 12)
+        XCTAssertEqual(VehicleState.green.batteryManagement.batteryRemain.ratio, 12)
         
         // Verify not charging
-        XCTAssertEqual(vehicleStatus.location?.heading, 0)
+        XCTAssertEqual(VehicleState.location?.heading, 0)
 
         // Verify still driving ready despite low battery
-        XCTAssertEqual(vehicleStatus.green.drivingReady, true)
+        XCTAssertEqual(VehicleState.green.drivingReady, true)
         
         // Verify battery pre-warning for low battery
-        XCTAssertEqual(vehicleStatus.electronics.autoCut.batteryPreWarning, true)
+        XCTAssertEqual(VehicleState.electronics.autoCut.batteryPreWarning, true)
     }
     
     func testFullBatteryScenarioDataIntegrity() throws {
-        let vehicleStatus = MockVehicleData.fullBattery
+        let VehicleState = MockVehicleData.fullBattery
         
         // Verify full battery
-        XCTAssertEqual(vehicleStatus.green.batteryManagement.batteryRemain.ratio, 100)
+        XCTAssertEqual(VehicleState.green.batteryManagement.batteryRemain.ratio, 100)
         
         // Verify not charging (finished)
-        XCTAssertEqual(vehicleStatus.location?.heading, 0)
+        XCTAssertEqual(VehicleState.location?.heading, 0)
 
         // Verify driving ready
-        XCTAssertEqual(vehicleStatus.green.drivingReady, true)
+        XCTAssertEqual(VehicleState.green.drivingReady, true)
         
         // Verify battery pre-warning is not active
-        XCTAssertEqual(vehicleStatus.electronics.autoCut.batteryPreWarning, false)
+        XCTAssertEqual(VehicleState.electronics.autoCut.batteryPreWarning, false)
     }
     
     func testFastChargingScenarioDataIntegrity() throws {
-        let vehicleStatus = MockVehicleData.fastCharging
+        let VehicleState = MockVehicleData.fastCharging
         
         // Verify battery level
-        XCTAssertEqual(vehicleStatus.green.batteryManagement.batteryRemain.ratio, 67)
+        XCTAssertEqual(VehicleState.green.batteryManagement.batteryRemain.ratio, 67)
         
         // Verify charging
-        XCTAssertEqual(vehicleStatus.location?.heading, 180)
+        XCTAssertEqual(VehicleState.location?.heading, 180)
 
         // Verify not driving ready
-        XCTAssertEqual(vehicleStatus.green.drivingReady, false)
+        XCTAssertEqual(VehicleState.green.drivingReady, false)
         
         // Verify charging information exists
-        XCTAssertNotNil(vehicleStatus.green.chargingInformation)
+        XCTAssertNotNil(VehicleState.green.chargingInformation)
         
         // Verify driving mode is Sport for fast charging scenario
-        XCTAssertEqual(vehicleStatus.chassis.drivingMode.state, "Sport")
+        XCTAssertEqual(VehicleState.chassis.drivingMode.state, "Sport")
     }
     
     func testPreconditioningScenarioDataIntegrity() throws {
-        let vehicleStatus = MockVehicleData.preconditioning
+        let VehicleState = MockVehicleData.preconditioning
         
         // Verify battery level
-        XCTAssertEqual(vehicleStatus.green.batteryManagement.batteryRemain.ratio, 82)
+        XCTAssertEqual(VehicleState.green.batteryManagement.batteryRemain.ratio, 82)
         
         // Verify not charging
-        XCTAssertEqual(vehicleStatus.location?.heading, 0)
+        XCTAssertEqual(VehicleState.location?.heading, 0)
 
         // Verify driving ready
-        XCTAssertEqual(vehicleStatus.green.drivingReady, true)
+        XCTAssertEqual(VehicleState.green.drivingReady, true)
         
         // Verify HVAC temperatures and fan settings
-        XCTAssertEqual(vehicleStatus.cabin.hvac.row1.driver.temperature.value, "22")
-        XCTAssertEqual(vehicleStatus.cabin.hvac.row1.driver.blower.speedLevel, 3)
+        XCTAssertEqual(VehicleState.cabin.hvac.row1.driver.temperature.value, "22")
+        XCTAssertEqual(VehicleState.cabin.hvac.row1.driver.blower.speedLevel, 3)
         
         // Verify seat climate is active
-        XCTAssertGreaterThan(vehicleStatus.cabin.seat.row1.driver.climate.state, 0)
+        XCTAssertGreaterThan(VehicleState.cabin.seat.row1.driver.climate.state, 0)
         
         // Verify steering wheel heating (if available)
-        if let steeringWheelHeat = vehicleStatus.cabin.steeringWheel.heat {
+        if let steeringWheelHeat = VehicleState.cabin.steeringWheel.heat {
             XCTAssertEqual(steeringWheelHeat.state, true)
         }
         
         // Verify reservation schedule is enabled
-        XCTAssertEqual(vehicleStatus.green.reservation.departure.schedule1.enable, true)
+        XCTAssertEqual(VehicleState.green.reservation.departure.schedule1.enable, true)
     }
     
     func testMaintenanceScenarioDataIntegrity() throws {
-        let vehicleStatus = MockVehicleData.maintenance
+        let VehicleState = MockVehicleData.maintenance
         
         // Verify battery level
-        XCTAssertEqual(vehicleStatus.green.batteryManagement.batteryRemain.ratio, 58)
+        XCTAssertEqual(VehicleState.green.batteryManagement.batteryRemain.ratio, 58)
         
         // Verify not driving ready (maintenance mode)
-        XCTAssertEqual(vehicleStatus.green.drivingReady, false)
+        XCTAssertEqual(VehicleState.green.drivingReady, false)
         
         // Verify maintenance indicators
-        XCTAssertEqual(vehicleStatus.body.windshield.front.washerFluid.levelLow, true)
-        XCTAssertEqual(vehicleStatus.chassis.axle.row1.right.tire.pressureLow, true)
+        XCTAssertEqual(VehicleState.body.windshield.front.washerFluid.levelLow, true)
+        XCTAssertEqual(VehicleState.chassis.axle.row1.right.tire.pressureLow, true)
 
         // Verify brake fluid warning (no direct level property)
-        XCTAssertNotNil(vehicleStatus.chassis.brake.fluid)
+        XCTAssertNotNil(VehicleState.chassis.brake.fluid)
         
         // Verify battery state of health
-        XCTAssertLessThan(vehicleStatus.green.batteryManagement.soH.ratio, 100.0)
+        XCTAssertLessThan(VehicleState.green.batteryManagement.soH.ratio, 100.0)
     }
     
     // MARK: - Helper Method Tests
@@ -193,9 +193,9 @@ final class MockVehicleDataTests: XCTestCase {
     
     // MARK: - JSON Decoding Tests
     
-    func testVehicleStatusJSONDecoding() throws {
+    func testVehicleStateJSONDecoding() throws {
         // Test that custom JSON can be decoded properly
-        let testJSON = MockVehicleData.createVehicleStatusJSON(
+        let testJSON = MockVehicleData.createVehicleStateJSON(
             batteryLevel: 50,
             isCharging: true,
             drivingReady: false,
@@ -206,21 +206,21 @@ final class MockVehicleDataTests: XCTestCase {
         let decoder = JSONDecoder()
         
         // Should not throw
-        let vehicleStatus = try decoder.decode(VehicleStatus.self, from: jsonData)
+        let VehicleState = try decoder.decode(VehicleState.self, from: jsonData)
         
         // Verify decoded values
-        XCTAssertEqual(vehicleStatus.green.batteryManagement.batteryRemain.ratio, 50)
-        XCTAssertEqual(vehicleStatus.location?.heading, 180) // Charging
-        XCTAssertEqual(vehicleStatus.green.drivingReady, false)
+        XCTAssertEqual(VehicleState.green.batteryManagement.batteryRemain.ratio, 50)
+        XCTAssertEqual(VehicleState.location?.heading, 180) // Charging
+        XCTAssertEqual(VehicleState.green.drivingReady, false)
     }
     
-    // MARK: - VehicleStatusResponse Tests
+    // MARK: - VehicleStateResponse Tests
     
-    func testVehicleStatusResponseCreation() {
+    func testVehicleStateResponseCreation() {
         let standardResponse = MockVehicleData.standardResponse
         
         XCTAssertEqual(standardResponse.resultCode, "0000")
-        XCTAssertEqual(standardResponse.serviceNumber, "VehicleStatus")
+        XCTAssertEqual(standardResponse.serviceNumber, "VehicleState")
         XCTAssertEqual(standardResponse.returnCode, "S")
         XCTAssertNotNil(standardResponse.lastUpdateTime)
         XCTAssertNotNil(standardResponse.state.vehicle)
@@ -243,21 +243,21 @@ final class MockVehicleDataTests: XCTestCase {
     
     // MARK: - Preview Extension Tests
     
-    func testVehicleStatusPreviewExtensions() {
+    func testVehicleStatePreviewExtensions() {
         // Test all preview extensions exist and return expected data
-        XCTAssertEqual(VehicleStatus.preview.green.batteryManagement.batteryRemain.ratio, 75)
-        XCTAssertEqual(VehicleStatus.chargingPreview.green.batteryManagement.batteryRemain.ratio, 45)
-        XCTAssertEqual(VehicleStatus.lowBatteryPreview.green.batteryManagement.batteryRemain.ratio, 12)
-        XCTAssertEqual(VehicleStatus.fullBatteryPreview.green.batteryManagement.batteryRemain.ratio, 100)
-        XCTAssertEqual(VehicleStatus.fastChargingPreview.green.batteryManagement.batteryRemain.ratio, 67)
-        XCTAssertEqual(VehicleStatus.preconditioningPreview.green.batteryManagement.batteryRemain.ratio, 82)
-        XCTAssertEqual(VehicleStatus.maintenancePreview.green.batteryManagement.batteryRemain.ratio, 58)
+        XCTAssertEqual(VehicleState.preview.green.batteryManagement.batteryRemain.ratio, 75)
+        XCTAssertEqual(VehicleState.chargingPreview.green.batteryManagement.batteryRemain.ratio, 45)
+        XCTAssertEqual(VehicleState.lowBatteryPreview.green.batteryManagement.batteryRemain.ratio, 12)
+        XCTAssertEqual(VehicleState.fullBatteryPreview.green.batteryManagement.batteryRemain.ratio, 100)
+        XCTAssertEqual(VehicleState.fastChargingPreview.green.batteryManagement.batteryRemain.ratio, 67)
+        XCTAssertEqual(VehicleState.preconditioningPreview.green.batteryManagement.batteryRemain.ratio, 82)
+        XCTAssertEqual(VehicleState.maintenancePreview.green.batteryManagement.batteryRemain.ratio, 58)
     }
     
-    func testVehicleStatusResponsePreviewExtensions() {
-        XCTAssertEqual(VehicleStatusResponse.preview.state.vehicle.green.batteryManagement.batteryRemain.ratio, 75)
-        XCTAssertEqual(VehicleStatusResponse.chargingPreview.state.vehicle.green.batteryManagement.batteryRemain.ratio, 45)
-        XCTAssertEqual(VehicleStatusResponse.lowBatteryPreview.state.vehicle.green.batteryManagement.batteryRemain.ratio, 12)
+    func testVehicleStateResponsePreviewExtensions() {
+        XCTAssertEqual(VehicleStateResponse.preview.state.vehicle.green.batteryManagement.batteryRemain.ratio, 75)
+        XCTAssertEqual(VehicleStateResponse.chargingPreview.state.vehicle.green.batteryManagement.batteryRemain.ratio, 45)
+        XCTAssertEqual(VehicleStateResponse.lowBatteryPreview.state.vehicle.green.batteryManagement.batteryRemain.ratio, 12)
     }
     
     func testVehiclePreviewExtension() {
@@ -343,7 +343,7 @@ final class MockVehicleDataTests: XCTestCase {
     }
     
     func testJSONDecodingPerformance() {
-        let jsonString = MockVehicleData.createVehicleStatusJSON(
+        let jsonString = MockVehicleData.createVehicleStateJSON(
             batteryLevel: 75,
             isCharging: false,
             drivingReady: true,
@@ -353,7 +353,7 @@ final class MockVehicleDataTests: XCTestCase {
         
         measure {
             let decoder = JSONDecoder()
-            _ = try? decoder.decode(VehicleStatus.self, from: jsonData)
+            _ = try? decoder.decode(VehicleState.self, from: jsonData)
         }
     }
 }

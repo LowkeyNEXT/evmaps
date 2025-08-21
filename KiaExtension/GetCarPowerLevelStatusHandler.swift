@@ -107,7 +107,7 @@ class GetCarPowerLevelStatusHandler: NSObject, INGetCarPowerLevelStatusIntentHan
             if useCachedData {
                 logDebug("Returning cached data for failure", category: .vehicle)
                 manager.restoreOutdatedData()
-                if let cachedData = try? manager.vehicleStatus {
+                if let cachedData = try? manager.vehicleState {
                     return cachedData.state.toIntentResponse(carId: carId, vehicleParameters: vehicleParameters, lastUpdateDate: .now - 1 * 60)
                 } else {
                     logDebug("No cached data, returning failure", category: .vehicle)
@@ -135,8 +135,8 @@ class GetCarPowerLevelStatusHandler: NSObject, INGetCarPowerLevelStatusIntentHan
 
             }
             logDebug("Handler: Returning mocking data", category: .vehicle)
-            return VehicleStatusResponse.lowBatteryPreview.state.toIntentResponse(carId: carId, vehicleParameters: vehicleParameters, lastUpdateDate: .now - 1 * 60)
-        } else if let cachedData = try? manager.vehicleStatus {
+            return VehicleStateResponse.lowBatteryPreview.state.toIntentResponse(carId: carId, vehicleParameters: vehicleParameters, lastUpdateDate: .now - 1 * 60)
+        } else if let cachedData = try? manager.vehicleState {
             // Use data from cache
             if cachedData.lastUpdateTime + 5 * 60 < Date.now {
                 logDebug("Handler: Old cache, updating cached data", category: .vehicle)
@@ -175,7 +175,7 @@ class GetCarPowerLevelStatusHandler: NSObject, INGetCarPowerLevelStatusIntentHan
         manager = VehicleManager(id: carId)
         
         // Send initial update from cached data immediately
-        if let cachedData = try? manager.vehicleStatus {
+        if let cachedData = try? manager.vehicleState {
             logDebug("Updater: Sending initial update from cached data", category: .vehicle)
             let response = cachedData.state.toIntentResponse(carId: carId, vehicleParameters: vehicleParameters, lastUpdateDate: .now - 1 * 60)
             observer.didUpdate(getCarPowerLevelStatus: response)
@@ -189,24 +189,27 @@ class GetCarPowerLevelStatusHandler: NSObject, INGetCarPowerLevelStatusIntentHan
             }
             
             // Subscribe to MQTT updates
-            mqttCancellable = mqttManager?.$vehicleStatus
+            mqttCancellable = mqttManager?.$vehicleState
                 .compactMap { $0 } // Filter out nil values
                 .sink { [weak self] mqttStatus in
                     guard let self = self else { return }
 
                     logDebug("Updater: Received MQTT update", category: .mqtt)
 
-                    let state = VehicleStatusResponse.State(vehicle: mqttStatus.state.vehicle)
-                    let response = state.toIntentResponse(carId: carId, vehicleParameters: self.vehicleParameters, lastUpdateDate: mqttStatus.lastUpdateTime)
+                    let response = mqttStatus.state.toIntentResponse(
+                        carId: carId,
+                        vehicleParameters: self.vehicleParameters,
+                        lastUpdateDate: mqttStatus.lastUpdateTime
+                    )
 
                     // Update stored status
                     do {
-                        let status = VehicleStatusResponse(
+                        let status = VehicleStateResponse(
                             resultCode: "S",
                             serviceNumber: "0",
                             returnCode: "0",
                             lastUpdateTime: mqttStatus.lastUpdateTime,
-                            state: state
+                            state: mqttStatus.state
                         )
                         try manager.store(status: status)
                     } catch {
@@ -316,7 +319,7 @@ class GetCarPowerLevelStatusHandler: NSObject, INGetCarPowerLevelStatusIntentHan
     }
 }
 
-extension VehicleStatusResponse.State {
+extension VehicleStateWrapper {
     /// Converts vehicle status to Apple Maps compatible INGetCarPowerLevelStatusIntentResponse
     /// - Parameters:
     ///   - carId: Unique identifier for the vehicle

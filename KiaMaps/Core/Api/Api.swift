@@ -188,7 +188,7 @@ class Api {
     /// - Returns: Complete vehicle status including battery, location, and system states
     /// - Note: Uses CCS2 endpoint if supported, fallback to standard endpoint
     /// - Throws: Network errors or data parsing failures
-    func vehicleCachedStatus(_ vehicleId: UUID) async throws -> VehicleStatusResponse {
+    func vehicleCachedStatus(_ vehicleId: UUID) async throws -> VehicleStateResponse {
         guard let authorization = authorization else {
             throw ApiError.unauthorized
         }

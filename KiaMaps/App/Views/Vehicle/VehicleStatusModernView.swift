@@ -1,9 +1,9 @@
 import SwiftUI
 
 /// Tesla-inspired modern vehicle status view integrating all new design components
-struct VehicleStatusModernView: View {
+struct VehicleStateModernView: View {
     let vehicle: Vehicle
-    let vehicleStatus: VehicleStatus
+    let VehicleState: VehicleState
     let lastUpdateTime: Date
     
     @State private var refreshing = false
@@ -27,7 +27,7 @@ struct VehicleStatusModernView: View {
     
     /// Extract real efficiency data from API with fallback hierarchy
     private var realEfficiency: String {
-        let economy = vehicleStatus.drivetrain.fuelSystem.averageFuelEconomy
+        let economy = VehicleState.drivetrain.fuelSystem.averageFuelEconomy
 
         if economy.drive > 0 {
             let numberFormatter = NumberFormatter()
@@ -43,7 +43,7 @@ struct VehicleStatusModernView: View {
             return "\(formattedValue) \(economy.unit.unitTitle)"
         } else {
             // Final fallback to driving history average
-            let drivingHistory = vehicleStatus.green.drivingHistory
+            let drivingHistory = VehicleState.green.drivingHistory
             if drivingHistory.average > 0 {
                 return String(format: "%.1f km/kWh", drivingHistory.average)
             } else {
@@ -59,12 +59,12 @@ struct VehicleStatusModernView: View {
                 vehicleHeaderSection
                 
                 // Battery Hero Section
-                BatteryHeroView(from: vehicleStatus)
+                BatteryHeroView(from: VehicleState)
                 
                 // Quick Actions
                 KiaCard(elevation: .medium) {
                     QuickActionsView(
-                        vehicleStatus: vehicleStatus,
+                        VehicleState: VehicleState,
                         onLockAction: { handleLockAction() },
                         onClimateAction: { handleClimateAction() },
                         onHornAction: { handleHornAction() },
@@ -94,7 +94,7 @@ struct VehicleStatusModernView: View {
         .background(KiaDesign.Colors.background)
         .navigationBarHidden(true)
         .refreshable {
-            await refreshVehicleStatus()
+            await refreshVehicleState()
         }
     }
     
@@ -119,10 +119,10 @@ struct VehicleStatusModernView: View {
                 // Status indicators
                 HStack(spacing: KiaDesign.Spacing.small) {
                     KiaStatusIndicator(
-                        status: vehicleStatus.drivingReady ? .ready : .warning("Not Ready")
+                        status: VehicleState.drivingReady ? .ready : .warning("Not Ready")
                     )
                     
-                    if vehicleStatus.green.batteryManagement.batteryRemain.ratio > 80 {
+                    if VehicleState.green.batteryManagement.batteryRemain.ratio > 80 {
                         KiaStatusIndicator(
                             status: .charging
                         )
@@ -200,7 +200,7 @@ struct VehicleStatusModernView: View {
                 statusCard(
                     icon: "speedometer",
                     title: "Range",
-                    value: "\(Int(vehicleStatus.green.batteryManagement.batteryRemain.ratio * 3)) km",
+                    value: "\(Int(VehicleState.green.batteryManagement.batteryRemain.ratio * 3)) km",
                     color: KiaDesign.Colors.primary
                 )
                 
@@ -235,7 +235,7 @@ struct VehicleStatusModernView: View {
                         .foregroundStyle(KiaDesign.Colors.textPrimary)
                     
                     KiaProgressBar(
-                        value: Double(vehicleStatus.green.batteryManagement.batteryRemain.ratio) / 100.0,
+                        value: Double(VehicleState.green.batteryManagement.batteryRemain.ratio) / 100.0,
                         style: .battery,
                         showPercentage: true
                     )
@@ -405,7 +405,7 @@ struct VehicleStatusModernView: View {
         print("Locate vehicle action")
     }
     
-    private func refreshVehicleStatus() async {
+    private func refreshVehicleState() async {
         refreshing = true
         
         // Simulate network request
@@ -417,25 +417,25 @@ struct VehicleStatusModernView: View {
 
 // MARK: - Preview
 #Preview("Modern Vehicle Status - Standard") {
-    VehicleStatusModernView(
+    VehicleStateModernView(
         vehicle: MockVehicleData.mockVehicle,
-        vehicleStatus: MockVehicleData.standard,
+        VehicleState: MockVehicleData.standard,
         lastUpdateTime: Date().addingTimeInterval(-300) // 5 minutes ago
     )
 }
 
 #Preview("Modern Vehicle Status - Charging") {
-    VehicleStatusModernView(
+    VehicleStateModernView(
         vehicle: MockVehicleData.mockVehicle,
-        vehicleStatus: MockVehicleData.charging,
+        VehicleState: MockVehicleData.charging,
         lastUpdateTime: Date().addingTimeInterval(-60) // 1 minute ago
     )
 }
 
 #Preview("Modern Vehicle Status - Low Battery") {
-    VehicleStatusModernView(
+    VehicleStateModernView(
         vehicle: MockVehicleData.mockVehicle,
-        vehicleStatus: MockVehicleData.lowBattery,
+        VehicleState: MockVehicleData.lowBattery,
         lastUpdateTime: Date().addingTimeInterval(-1200) // 20 minutes ago
     )
 }

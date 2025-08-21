@@ -13,7 +13,7 @@ struct DebugScreenView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var testResults: [String] = []
     @State private var isRunningTests = false
-    @State private var showingVehicleStatus = false
+    @State private var showingVehicleState = false
     @State private var showingDebugLogs = false
     @AppStorage("RemoteLoggingEnabled") private var remoteLoggingEnabled = false
     
@@ -56,13 +56,13 @@ struct DebugScreenView: View {
                     .foregroundStyle(KiaDesign.Colors.primary)
                 }
             }
-            .sheet(isPresented: $showingVehicleStatus) {
+            .sheet(isPresented: $showingVehicleState) {
                 NavigationView {
                     // Create mock data for the legacy view
-                    VehicleStatusView(
+                    VehicleStateView(
                         brand: AppConfiguration.apiConfiguration.name,
                         vehicle: MockVehicleData.mockVehicle,
-                        vehicleStatus: MockVehicleData.standard,
+                        VehicleState: MockVehicleData.standard,
                         lastUpdateTime: Date()
                     )
                     .navigationTitle("Legacy Vehicle Status")
@@ -70,7 +70,7 @@ struct DebugScreenView: View {
                     .toolbar {
                         ToolbarItem(placement: .topBarTrailing) {
                             Button("Done") {
-                                showingVehicleStatus = false
+                                showingVehicleState = false
                             }
                         }
                     }
@@ -185,7 +185,7 @@ struct DebugScreenView: View {
                         subtitle: "Open the original vehicle status interface",
                         icon: "car.2",
                         action: {
-                            showingVehicleStatus = true
+                            showingVehicleState = true
                         }
                     )
                     

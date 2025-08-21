@@ -13,8 +13,8 @@ import CoreLocation
 /// Tesla-style map view with vehicle location and charging station integration
 struct VehicleMapView: View {
     let vehicle: Vehicle?
-    let vehicleStatus: VehicleStatus
-    let vehicleLocation: Location
+    let vehicleState: VehicleState
+    let vehicleLocation: VehicleLocation
     let onChargingStationTap: ((ChargingStation) -> Void)?
     let onVehicleTap: (() -> Void)?
     
@@ -41,13 +41,13 @@ struct VehicleMapView: View {
     
     init(
         vehicle: Vehicle? = nil,
-        vehicleStatus: VehicleStatus,
-        vehicleLocation: Location,
+        vehicleState: VehicleState,
+        vehicleLocation: VehicleLocation,
         onChargingStationTap: ((ChargingStation) -> Void)? = nil,
         onVehicleTap: (() -> Void)? = nil
     ) {
         self.vehicle = vehicle
-        self.vehicleStatus = vehicleStatus
+        self.vehicleState = vehicleState
         self.vehicleLocation = vehicleLocation
         self.onChargingStationTap = onChargingStationTap
         self.onVehicleTap = onVehicleTap
@@ -77,7 +77,7 @@ struct VehicleMapView: View {
                         switch annotation.type {
                         case .vehicle:
                             VehicleAnnotationView(
-                                batteryLevel: Double(vehicleStatus.green.batteryManagement.batteryRemain.ratio) / 100.0,
+                                batteryLevel: Double(vehicleState.green.batteryManagement.batteryRemain.ratio) / 100.0,
                                 isCharging: isVehicleCharging,
                                 heading: vehicleLocation.heading
                             )
@@ -222,7 +222,7 @@ struct VehicleMapView: View {
                 // First row: Battery and Range
                 HStack(spacing: KiaDesign.Spacing.large) {
                     VStack(spacing: 4) {
-                        Text("\(Int(Double(vehicleStatus.green.batteryManagement.batteryRemain.ratio)))%")
+                        Text("\(Int(Double(vehicleState.green.batteryManagement.batteryRemain.ratio)))%")
                             .font(KiaDesign.Typography.body)
                             .fontWeight(.semibold)
                             .monospacedDigit()
@@ -237,7 +237,7 @@ struct VehicleMapView: View {
                         .frame(height: 30)
                     
                     VStack(spacing: 4) {
-                        let dte = vehicleStatus.drivetrain.fuelSystem.dte
+                        let dte = vehicleState.drivetrain.fuelSystem.dte
                         let rangeUnit = dte.unit == .kilometers ? "km" : "mi"
                         Text("\(dte.total) \(rangeUnit)")
                             .font(KiaDesign.Typography.body)
@@ -384,7 +384,7 @@ struct VehicleMapView: View {
     // MARK: - Helper Properties
     
     private var isVehicleCharging: Bool {
-        vehicleStatus.isCharging
+        vehicleState.isCharging
     }
     
     private var vehicleNickname: String {
@@ -712,7 +712,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
 #Preview("Vehicle Map - Standard") {
     VehicleMapView(
         vehicle: MockVehicleData.mockVehicle,
-        vehicleStatus: MockVehicleData.standard,
+        vehicleState: MockVehicleData.standard,
         vehicleLocation: MockVehicleData.standard.location!,
         onChargingStationTap: { station in
             print("Tapped charging station: \(station.name)")
@@ -729,7 +729,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
 #Preview("Vehicle Map - Charging") {
     VehicleMapView(
         vehicle: MockVehicleData.mockVehicle,
-        vehicleStatus: MockVehicleData.charging,
+        vehicleState: MockVehicleData.charging,
         vehicleLocation: MockVehicleData.standard.location!,
         onChargingStationTap: { station in
             print("Tapped charging station: \(station.name)")

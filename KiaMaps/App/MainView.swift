@@ -39,7 +39,7 @@ struct MainView: View {
     @State var state: ViewState
     @State var vehicles: [Vehicle] = []
     @State var selectedVehicle: Vehicle? = nil
-    @State var selectedVehicleStatus: VehicleStatusResponse? = nil
+    @State var selectedVehicleState: VehicleStateResponse? = nil
     @State var isSelectedVahicleExpanded = true
     @State var lastUpdateDate: Date?
     @State var showingProfile = false
@@ -47,7 +47,7 @@ struct MainView: View {
     
     // MQTT Integration State
     @StateObject private var mqttManager: MQTTManager
-    @State private var currentVehicleStatus: VehicleStatus?
+    @State private var currentVehicleState: VehicleState?
     @State private var mqttConnectionStatus: MQTTConnectionStatus = .disconnected
     @State private var receivedMQTTUpdate = false
 
@@ -82,9 +82,9 @@ struct MainView: View {
                         }
                         
                         // Enhanced vehicle status in toolbar when vehicle is selected
-                        if selectedVehicle != nil, let selectedVehicleStatus = selectedVehicleStatus {
+                        if selectedVehicle != nil, let selectedVehicleState = selectedVehicleState {
                             ToolbarItem(placement: .topBarTrailing) {
-                                vehicleStatusIcons(status: selectedVehicleStatus)
+                                VehicleStateIcons(status: selectedVehicleState)
                             }
                         }
                     })
@@ -115,14 +115,14 @@ struct MainView: View {
         .onAppear {
             setupMQTTIntegration()
         }
-        .onChange(of: selectedVehicleStatus?.state.vehicle.isCharging) { _, isCharging in
+        .onChange(of: selectedVehicleState?.state.vehicle.isCharging) { _, isCharging in
             handleChargingStateChange(isCharging ?? false)
         }
         .onChange(of: mqttManager.connectionStatus) { _, connectionStatus in
             mqttConnectionStatus = connectionStatus
         }
-        .onReceive(mqttManager.$vehicleStatus) { vehicleStatus in
-            handleMQTTDataUpdate(vehicleStatus)
+        .onReceive(mqttManager.$vehicleState) { VehicleState in
+            handleMQTTDataUpdate(VehicleState)
         }
     }
 
@@ -131,15 +131,15 @@ struct MainView: View {
     
     @ViewBuilder
     var contentView: some View {
-        if let selectedVehicle = selectedVehicle, let selectedVehicleStatus = selectedVehicleStatus {
+        if let selectedVehicle = selectedVehicle, let selectedVehicleState = selectedVehicleState {
             // Use MQTT-updated status if available, otherwise use API status
-            let currentStatus = currentVehicleStatus ?? selectedVehicleStatus.state.vehicle
+            let currentStatus = currentVehicleState ?? selectedVehicleState.state.vehicle
             
             OverviewPageView(
                 brandName: api.configuration.brandName,
                 vehicle: selectedVehicle,
                 status: currentStatus,
-                lastUpdateTime: selectedVehicleStatus.lastUpdateTime,
+                lastUpdateTime: selectedVehicleState.lastUpdateTime,
                 isActive: true,
                 mqttConnectionStatus: mqttConnectionStatus,
                 receivedMQTTUpdate: receivedMQTTUpdate
@@ -156,7 +156,7 @@ struct MainView: View {
     
     // MARK: - Vehicle Status Icons (for toolbar)
     
-    private func vehicleStatusIcons(status: VehicleStatusResponse) -> some View {
+    private func VehicleStateIcons(status: VehicleStateResponse) -> some View {
         HStack(spacing: KiaDesign.Spacing.small) {
             // Last update indicator
             VStack(spacing: 2) {
@@ -273,12 +273,12 @@ struct MainView: View {
             let manager = SharedVehicleManager.shared.manager(for: vehicle.vehicleId)
             manager.store(type: configuration.apiConfiguration.name + "-" + vehicle.detailInfo.saleCarmdlEnName)
 
-            if let cachedVehicle = try? manager.vehicleStatus {
-                selectedVehicleStatus = cachedVehicle
+            if let cachedVehicle = try? manager.vehicleState {
+                selectedVehicleState = cachedVehicle
             } else {
-                let vehicleStatus = try await api.vehicleCachedStatusWithAutoRefresh(vehicle.vehicleId)
-                try manager.store(status: vehicleStatus)
-                selectedVehicleStatus = vehicleStatus
+                let VehicleState = try await api.vehicleCachedStatusWithAutoRefresh(vehicle.vehicleId)
+                try manager.store(status: VehicleState)
+                selectedVehicleState = VehicleState
             }
 
             state = .authorized
@@ -316,17 +316,17 @@ struct MainView: View {
 
     private func refreshData() async {
         do {
-            guard let selectedVehicle = selectedVehicle, let selectedVehicleStatus = selectedVehicleStatus else { return }
+            guard let selectedVehicle = selectedVehicle, let selectedVehicleState = selectedVehicleState else { return }
 
             if let lastUpdateDate = lastUpdateDate {
                 await loadData()
-                if lastUpdateDate < selectedVehicleStatus.lastUpdateTime {
+                if lastUpdateDate < selectedVehicleState.lastUpdateTime {
                     self.lastUpdateDate = nil
                     logDebug("Vehicle status updated", category: .ui)
                 }
             } else {
                 _ = try await api.refreshVehicleWithAutoRefresh(selectedVehicle.vehicleId)
-                lastUpdateDate = selectedVehicleStatus.lastUpdateTime
+                lastUpdateDate = selectedVehicleState.lastUpdateTime
             }
             let manager = SharedVehicleManager.shared.manager(for: selectedVehicle.vehicleId)
             manager.removeLastUpdateDate()
@@ -360,31 +360,31 @@ struct MainView: View {
         mqttConnectionStatus = mqttManager.connectionStatus
         
         // Start MQTT if car is already charging
-        if selectedVehicleStatus?.state.vehicle.isCharging == true {
+        if selectedVehicleState?.state.vehicle.isCharging == true {
             startMQTTCommunication()
         }
     }
     
-    private func handleMQTTDataUpdate(_ vehicleStatus: VehicleMQTTStatusResponse?) {
+    private func handleMQTTDataUpdate(_ VehicleState: VehicleMQTTStatusResponse?) {
         // Handle MQTT data updates here
-        guard let vehicleStatus = vehicleStatus else { return }
+        guard let VehicleState = VehicleState else { return }
         receivedMQTTUpdate = true
 
-        if let status = selectedVehicleStatus {
-            selectedVehicleStatus = .init(
+        if let status = selectedVehicleState {
+            selectedVehicleState = .init(
                 resultCode: status.resultCode,
                 serviceNumber: status.serviceNumber,
                 returnCode: status.returnCode,
-                lastUpdateTime: vehicleStatus.lastUpdateTime,
-                state: .init(vehicle: vehicleStatus.state.vehicle)
+                lastUpdateTime: VehicleState.lastUpdateTime,
+                state: .init(vehicle: VehicleState.state.vehicle)
             )
         } else {
-            selectedVehicleStatus = .init(
+            selectedVehicleState = .init(
                 resultCode: "S",
                 serviceNumber: "0",
                 returnCode: "0",
-                lastUpdateTime: vehicleStatus.lastUpdateTime,
-                state: .init(vehicle: vehicleStatus.state.vehicle)
+                lastUpdateTime: VehicleState.lastUpdateTime,
+                state: .init(vehicle: VehicleState.state.vehicle)
             )
         }
     }
@@ -419,6 +419,6 @@ struct MainView: View {
         mqttManager.disconnect()
         mqttConnectionStatus = .disconnected
         receivedMQTTUpdate = false
-        currentVehicleStatus = nil // Reset to use API data
+        currentVehicleState = nil // Reset to use API data
     }
 }

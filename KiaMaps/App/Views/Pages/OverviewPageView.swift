@@ -13,7 +13,7 @@ import Combine
 struct OverviewPageView: View {
     let brandName: String
     let vehicle: Vehicle
-    let status: VehicleStatus
+    let status: VehicleState
     let lastUpdateTime: Date
     let isActive: Bool
     let mqttConnectionStatus: MQTTConnectionStatus
@@ -35,7 +35,7 @@ struct OverviewPageView: View {
                 quickActionsSection
                 
                 // Vehicle Status Grid
-                vehicleStatusGrid
+                VehicleStateGrid
                 
                 // More Details Button
                 moreDetailsButton
@@ -79,7 +79,7 @@ struct OverviewPageView: View {
             NavigationView {
                 VehicleMapView(
                     vehicle: vehicle,
-                    vehicleStatus: status,
+                    vehicleState: status,
                     vehicleLocation: status.location!,
                     onChargingStationTap: { station in
                         // Handle charging station tap
@@ -112,7 +112,7 @@ struct OverviewPageView: View {
                 ScrollView {
                     VStack(spacing: KiaDesign.Spacing.xl) {
                         InteractiveVehicleSilhouetteView(
-                            vehicleStatus: status
+                            vehicleState: status
                         )
                     }
                     .padding(KiaDesign.Spacing.large)
@@ -143,7 +143,7 @@ struct OverviewPageView: View {
     private var quickActionsSection: some View {
         KiaCard {
             QuickActionsView(
-                vehicleStatus: status,
+                VehicleState: status,
                 onLockAction: {
                     // Show vehicle silhouette modal
                     showLockModal = true
@@ -166,7 +166,7 @@ struct OverviewPageView: View {
     
     // MARK: - Vehicle Status Grid
     
-    private var vehicleStatusGrid: some View {
+    private var VehicleStateGrid: some View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: KiaDesign.Spacing.medium) {
             // Doors Status - using the available lock data from cabin
             let row1 = status.cabin.door.row1

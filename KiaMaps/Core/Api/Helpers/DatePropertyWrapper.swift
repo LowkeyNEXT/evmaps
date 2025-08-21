@@ -52,6 +52,28 @@ struct MillisecondDateFormatter: DecodeDateFormatter {
     }
 }
 
+struct MergedDateFormatter: DecodeDateFormatter {
+    static let formatter: DecodeDateFormatter = MergedDateFormatter()
+
+    private let dateFormatter: DateFormatter
+
+    init() {
+        dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyyMMddHHmmss"
+        dateFormatter.timeZone = TimeZone(secondsFromGMT: 0) // UTC
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+    }
+
+    func string(from date: Date) -> String {
+        dateFormatter.string(from: date)
+    }
+
+    func date(from string: String?) -> Date? {
+        guard let string = string else { return nil }
+        return dateFormatter.date(from: string)
+    }
+}
+
 @propertyWrapper
 struct DateValue<Formatter: DecodeDateFormatter>: Codable {
     enum ParsingError: Error {

@@ -15,6 +15,7 @@ enum MQTTError: LocalizedError {
     case noVehicleSelected
     case incompleteSetup
     case connectionFailed(String)
+    case noDataInTopic
 
     var errorDescription: String? {
         switch self {
@@ -26,6 +27,8 @@ enum MQTTError: LocalizedError {
             return "MQTT setup incomplete - missing device info or vehicle metadata"
         case .connectionFailed(let reason):
             return "MQTT connection failed: \(reason)"
+        case .noDataInTopic:
+            return "MQTT expected to have data in topic, but found none"
         }
     }
 }
@@ -68,7 +71,8 @@ class MQTTManager: ObservableObject {
     @Published var lastError: String?
     @Published var receivedMessageCount: Int = 0
     @Published var latestData: [String: Any]?
-    @Published var vehicleStatus: VehicleMQTTStatusResponse? = nil
+    @Published var vehicleState: VehicleMQTTStatusResponse? = nil
+    @Published var vehicleLocation: VehicleMQTTLocationResponse? = nil
 
     // MARK: - Private Properties
 
@@ -113,7 +117,7 @@ class MQTTManager: ObservableObject {
             let vehicleMetadata = try await api.fetchMQTTVehicleMetadata(for: vehicleId, clientId: deviceInfo.clientId)
             self.vehicleMetadata = vehicleMetadata
 
-            let protocols: [any MQTTProtocol] = [MQTTBaseProtocolIds.connection, MQTTBaseProtocolIds.vss]
+            let protocols: [any MQTTProtocol] = [MQTTBaseProtocolIds.connection, MQTTBaseProtocolIds.vss] // location, res is working
 
             // Step 4: Subscribe to vehicle protocols via HTTP
             try await api.subscribeMQTTVehicleProtocols(
@@ -312,13 +316,13 @@ extension MQTTManager: @preconcurrency CocoaMQTT5Delegate {
         receivedMessageCount += 1
 
         // Parse vehicle data from message
-        var data: Data?
+        #if DEBUG
         if let messageString = message.string,
            let messageData = messageString.data(using: .utf8),
            let json = try? JSONSerialization.jsonObject(with: messageData) as? [String: Any] {
             latestData = json
-            data = messageData
         }
+        #endif
 
         if let publishData = publishData {
             logDebug("Publish data: \(publishData)", category: .mqtt)
@@ -330,18 +334,13 @@ extension MQTTManager: @preconcurrency CocoaMQTT5Delegate {
         if let protocolId = protocolId as? MQTTBaseProtocolIds {
             switch protocolId {
             case .vss, .connection:
-                guard let data = data else {
-                    logDebug("No data for topic: \(message.topic)", category: .mqtt)
-                    return
-                }
-                let decoder = JSONDecoder()
                 do {
                     if protocolId == .vss {
-                        let vehicleStatus = try decoder.decode(VehicleMQTTStatusResponse.self, from: data)
-                        logInfo("Last vehicle data update received at: \(vehicleStatus.lastUpdateTime)", category: .mqtt)
-                        self.vehicleStatus = vehicleStatus
+                        let state: VehicleMQTTStatusResponse = try decodeData(from: message.string, topic: message.topic)
+                        logInfo("Last vehicle data update received at: \(state.lastUpdateTime)", category: .mqtt)
+                        self.vehicleState = state
                     } else if protocolId == .connection {
-                        let connectionStatus = try decoder.decode(ConnectionStateResponse.self, from: data)
+                        let connectionStatus: ConnectionStateResponse = try decodeData(from: message.string, topic: message.topic)
                         logDebug("Connection state changed to: \(connectionStatus.state.rawValue)", category: .mqtt)
                         if connectionStatus.state == .offline {
                             disconnect()
@@ -353,9 +352,29 @@ extension MQTTManager: @preconcurrency CocoaMQTT5Delegate {
             case .res, .vehicleCcuUpdate:
                 break
             }
+        } else if let protocolId = protocolId as? MQTTSpeedEventProtocolIds {
+            switch protocolId {
+            case .location:
+                do {
+                    let state: VehicleMQTTLocationResponse = try decodeData(from: message.string, topic: message.topic)
+                    logInfo("Last vehicle location update received at: \(state.lastUpdateTime)", category: .mqtt)
+                    self.vehicleLocation = state
+                } catch {
+                    logError("Failed to decode data for topic: \(message.topic), error: \(error.localizedDescription)", category: .mqtt)
+                }
+            }
         }
     }
-    
+
+    private func decodeData<D: Decodable>(from stringData: String?, topic: String) throws -> D {
+        guard let data = stringData?.data(using: .utf8) else {
+            logDebug("No data for topic: \(topic)", category: .mqtt)
+            throw MQTTError.noDataInTopic
+        }
+        let decoder = JSONDecoder()
+        return try decoder.decode(D.self, from: data)
+    }
+
     func mqtt5(_ mqtt: CocoaMQTT5, didSubscribeTopics success: NSDictionary, failed: [String], subAckData: MqttDecodeSubAck?) {
         logInfo("MQTT 5.0 Subscribed to topics: \(success)", category: .mqtt)
         if !failed.isEmpty {

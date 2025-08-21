@@ -11,7 +11,7 @@ import SwiftUI
 /// Details page showing vehicle information and diagnostics
 struct DetailsPageView: View {
     let vehicle: Vehicle
-    let status: VehicleStatusResponse
+    let status: VehicleStateResponse
     let isActive: Bool
     let onRefresh: () async -> Void
     let apiConfigurationName: String
