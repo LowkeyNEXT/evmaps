@@ -22,8 +22,6 @@ class GetCarPowerLevelStatusHandler: NSObject, INGetCarPowerLevelStatusIntentHan
     private var manager = VehicleManager(id: UUID())
     /// Vehicle-specific parameters for Apple Maps integration
     private var vehicleParameters: VehicleParameters { manager.vehicleParamter }
-    /// Flag to prevent infinite login retry loops
-    private var loginRetry: Bool = false
 
     /// Timer for sending periodic updates to Apple Maps
     private var timer: Timer?
@@ -64,35 +62,22 @@ class GetCarPowerLevelStatusHandler: NSObject, INGetCarPowerLevelStatusIntentHan
         let result: INGetCarPowerLevelStatusIntentResponse
 
         do {
-            loginRetry = false
-            let status = try await api.vehicleCachedStatus(carId)
+            let status = try await api.vehicleCachedStatusWithAutoRefresh(carId)
             // Fetched status is older than 5 minutes, try ask for refresh in next 5 mins
             if status.lastUpdateTime + 5 * 60 < Date.now {
-                _ = try await api.refreshVehicle(carId)
+                _ = try await api.refreshVehicleWithAutoRefresh(carId)
             } else {
                 try manager.store(status: status)
             }
             result = status.state.toIntentResponse(carId: carId, vehicleParameters: vehicleParameters, lastUpdateDate: .now - 1 * 60)
             logDebug("Loaded car status '\(status.state.vehicle.green.batteryManagement.batteryRemain.ratio)'", category: .vehicle)
         } catch {
-            var useCachedData = true
             if let error = error as? ApiError {
-                switch (error, loginRetry) {
-                case (.unauthorized, false):
-                    do {
-                        logWarning("Unauthorized trying retry (Status code 401)", category: .auth)
-                        try await credentialsHandler.reauthorize()
-                        result = await fetchCarStatus(carId: carId)
-
-                        useCachedData = false
-                        logDebug("Successfully reauthorized", category: .auth)
-                    } catch {
-                        result = .init(code: .failureRequiringAppLaunch, userActivity: nil)
-                    }
-                case (.unauthorized, true):
+                switch error {
+                case .unauthorized:
                     logError("Unauthorized after retry (Status code 401)", category: .auth)
                     result = .init(code: .failureRequiringAppLaunch, userActivity: nil)
-                case (.unexpectedStatusCode(400), false):
+                case .unexpectedStatusCode(400):
                     logError("We probably reached call limit (Status code 400)", category: .api)
                     result = .init(code: .success, userActivity: nil)
                 default:
@@ -104,15 +89,13 @@ class GetCarPowerLevelStatusHandler: NSObject, INGetCarPowerLevelStatusIntentHan
                 result = .init(code: .failure, userActivity: nil)
             }
 
-            if useCachedData {
-                logDebug("Returning cached data for failure", category: .vehicle)
-                manager.restoreOutdatedData()
-                if let cachedData = try? manager.vehicleState {
-                    return cachedData.state.toIntentResponse(carId: carId, vehicleParameters: vehicleParameters, lastUpdateDate: .now - 1 * 60)
-                } else {
-                    logDebug("No cached data, returning failure", category: .vehicle)
-                    manager.removeLastUpdateDate()
-                }
+            logDebug("Returning cached data for failure", category: .vehicle)
+            manager.restoreOutdatedData()
+            if let cachedData = try? manager.vehicleState {
+                return cachedData.state.toIntentResponse(carId: carId, vehicleParameters: vehicleParameters, lastUpdateDate: .now - 1 * 60)
+            } else {
+                logDebug("No cached data, returning failure", category: .vehicle)
+                manager.removeLastUpdateDate()
             }
         }
         return result
@@ -142,7 +125,7 @@ class GetCarPowerLevelStatusHandler: NSObject, INGetCarPowerLevelStatusIntentHan
                 logDebug("Handler: Old cache, updating cached data", category: .vehicle)
                 await credentialsHandler.continueOrWaitForCredentials()
                 do {
-                    _ = try await api.refreshVehicle(carId)
+                    _ = try await api.refreshVehicleWithAutoRefresh(carId)
                 } catch {
                     logError("Failed to refresh vehicle: \(error.localizedDescription)", category: .vehicle)
                 }

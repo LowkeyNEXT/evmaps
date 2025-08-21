@@ -107,7 +107,7 @@ class MQTTManager: ObservableObject {
 
         do {
             // Step 1: Get device host information
-            let hostInfo = try await api.fetchMQTTDeviceHost()
+            let hostInfo = try await api.fetchMQTTDeviceHostAutoRefresh()
             
             // Step 2: Register device
             let deviceInfo = try await api.registerMQTTDevice()

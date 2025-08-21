@@ -18,8 +18,6 @@ class CarListHandler: NSObject, INListCarsIntentHandling, Handler {
     private let api: Api
     /// Credentials handler for authentication management
     private let credentialsHandler: CredentialsHandler
-    /// Flag to prevent infinite login retry loops
-    private var loginRetry: Bool = false
 
     /// Initializes the handler with required dependencies
     /// - Parameters:
@@ -46,27 +44,15 @@ class CarListHandler: NSObject, INListCarsIntentHandling, Handler {
         let result: INListCarsIntentResponse
 
         do {
-            loginRetry = false
-            let cars = try await api.vehicles().vehicles
+            let cars = try await api.vehiclesWithAutoRefresh().vehicles
 
             result = .init(code: .success, userActivity: nil)
             result.cars = cars.map { $0.car(with: api.configuration) }
             logDebug("Loaded \(cars.count) cars", category: .vehicle)
         } catch let error  {
             if let error = error as? ApiError {
-                switch (error, loginRetry) {
-                case (.unauthorized, false):
-                    loginRetry = true
-                    do {
-                        logWarning("Unauthorized trying retry (Status code 401)", category: .auth)
-                        try await credentialsHandler.reauthorize()
-                        result = await handle(intent: intent)
-                        logDebug("Successfully reauthorized", category: .auth)
-                    } catch {
-                        logError("Failed to reauthorize, unknown error '\(error.localizedDescription)'", category: .auth)
-                        result = .init(code: .failureRequiringAppLaunch, userActivity: nil)
-                    }
-                case (.unauthorized, true):
+                switch error {
+                case .unauthorized:
                     logError("Unauthorized after retry (Status code 401)", category: .auth)
                     result = .init(code: .failureRequiringAppLaunch, userActivity: nil)
                 default:

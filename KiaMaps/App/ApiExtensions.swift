@@ -188,4 +188,11 @@ extension Api {
             try await self.logout()
         }
     }
+
+    /// MQTT device host with automatic token refresh (in case logout needs valid token)
+    func fetchMQTTDeviceHostAutoRefresh() async throws -> MQTTHostInfo {
+        try await executeWithAutoRefresh {
+            try await self.fetchMQTTDeviceHost()
+        }
+    }
 }

@@ -117,6 +117,7 @@
 		80D82EAB2E2EB548008CE0E7 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				ApiExtensions.swift,
 				AppConfiguration.swift,
 				Mock/MockVehicleData.swift,
 			);
