@@ -299,6 +299,7 @@ struct ApiRequestImpl: ApiRequest {
         charset.insert("&")
         charset.insert("-")
         charset.insert(".")
+        charset.insert("_")
         return charset
     }()
 

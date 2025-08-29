@@ -7,7 +7,54 @@
 //
 
 import SwiftUI
+import WebKit
 import os.log
+// Uncomment when package is added:
+// import RecaptchaEnterprise
+
+struct LoginWebView: UIViewRepresentable {
+    let url: URL?
+    let navigationDelegate: WKNavigationDelegate
+
+    func makeUIView(context: Context) -> WKWebView {
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .nonPersistent()
+        configuration.applicationNameForUserAgent = "15E148_CCS_APP_iOS"
+        let webView = WKWebView(frame: .zero, configuration: configuration)
+        webView.isInspectable = true
+        webView.navigationDelegate = navigationDelegate
+        return webView
+    }
+
+    func updateUIView(_ webView: WKWebView, context: Context) {
+        guard let url = url else { return }
+        let request = URLRequest(url: url)
+        webView.load(request)
+    }
+}
+
+class LoginViewWebDelegate: NSObject, WKNavigationDelegate {
+    typealias Callback = (_ code: String, _ state: String, _ loginSuccess: Bool) -> Void
+
+    let api: Api
+    var callback: Callback?
+
+    init(api: Api, callback: Callback?) {
+        self.api = api
+        self.callback = callback
+    }
+
+    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy {
+        if let url = navigationAction.request.url, url.path == "/api/v1/user/oauth2/redirect" {
+            guard let extract = try? api.extractAuthorizationCode(from: url) else { return .cancel }
+            callback?(extract.code, extract.state, extract.loginSuccess)
+            return .cancel
+        } else {
+            print(navigationAction.request.url?.path ?? "no path")
+            return .allow
+        }
+    }
+}
 
 struct LoginView: View {
     @State private var username: String = ""
@@ -17,19 +64,28 @@ struct LoginView: View {
     @State private var showError: Bool = false
     @State private var usernameError: String = ""
     @State private var showUsernameError: Bool = false
-    
+    @State private var recaptchaToken: String? = nil
+    @State private var isVerifyingRecaptcha: Bool = false
+    @State private var showLoginView: Bool = true
+
     @FocusState private var focusedField: Field?
     
     enum Field {
         case username
         case password
     }
-    
+
     let configuration: AppConfiguration.Type
+    let api: Api
     let onLoginSuccess: (AuthorizationData) -> Void
-    
-    private var api: Api {
-        Api(configuration: configuration.apiConfiguration, rsaService: .init())
+    let delegateObject: LoginViewWebDelegate
+
+    init(configuration: AppConfiguration.Type, onLoginSuccess: @escaping (AuthorizationData) -> Void) {
+        let api = Api(configuration: configuration.apiConfiguration, rsaService: .init())
+        self.configuration = configuration
+        self.api = api
+        self.onLoginSuccess = onLoginSuccess
+        self.delegateObject = LoginViewWebDelegate(api: api, callback: nil)
     }
     
     var body: some View {
@@ -145,12 +201,12 @@ struct LoginView: View {
                 // Login Button
                 VStack(spacing: KiaDesign.Spacing.medium) {
                     KiaButton(
-                        "Sign In",
-                        icon: "arrow.right",
+                        isVerifyingRecaptcha ? "Verifying..." : "Sign In",
+                        icon: isVerifyingRecaptcha ? "checkmark.shield" : "arrow.right",
                         style: .primary,
                         size: .large,
-                        isEnabled: !isLoading && !username.isEmpty && !password.isEmpty && !showUsernameError,
-                        isLoading: isLoading,
+                        isEnabled: !isLoading && !username.isEmpty && !password.isEmpty && !showUsernameError && !isVerifyingRecaptcha,
+                        isLoading: isLoading || isVerifyingRecaptcha,
                         isFullWidth: true,
                         hapticFeedback: .medium,
                         action: {
@@ -165,9 +221,19 @@ struct LoginView: View {
                 .padding(.bottom, KiaDesign.Spacing.large)
             }
         }
+        .sheet(isPresented: $showLoginView, content: {
+            NavigationView {
+                Group {
+                    LoginWebView(url: try? api.webLoginUrl(), navigationDelegate: delegateObject)
+                }
+                .ignoresSafeArea()
+                .navigationTitle("Login")
+                .navigationBarTitleDisplayMode(.inline)
+            }
+        })
         .scrollDismissesKeyboard(.interactively)
         .background(KiaDesign.Colors.background)
-        .navigationTitle("Login to Kia")
+        .navigationTitle("Login to \(configuration.apiConfiguration.brandName)")
         .onAppear {
             loadSavedCredentials()
             // Auto-focus username field if no saved credentials
@@ -176,9 +242,13 @@ struct LoginView: View {
                     focusedField = .username
                 }
             }
+            self.delegateObject.callback = { code, _, success in
+                guard success else { return }
+                self.finishLogin(code: code)
+            }
         }
     }
-    
+
     private func performLogin() async {
         // Validate email before attempting login
         validateUsername(username)
@@ -198,9 +268,9 @@ struct LoginView: View {
         }
         
         do {
-            // Attempt login with API
-            let authorizationData = try await api.login(username: username, password: password)
-            
+            // Login with API (including reCAPTCHA token)
+            let authorizationData = try await api.login(username: username, password: password, recaptchaToken: "")
+
             // Store credentials and authorization data
             storeCredentials()
             
@@ -227,7 +297,44 @@ struct LoginView: View {
             }
         }
     }
-    
+
+    private func finishLogin(code: String) {
+        showLoginView = false
+        errorMessage = ""
+        isLoading = true
+        Task {
+            do {
+                // Login to get tokens
+                let authorizationData = try await api.login(authorizationCode: code)
+
+                // Store credentials and authorization data
+                storeCredentials()
+
+                // Call success callback with authorization data
+                await MainActor.run {
+                    isLoading = false
+                    onLoginSuccess(authorizationData)
+                }
+            } catch let apiError as ApiError {
+                await MainActor.run {
+                    isLoading = false
+                    errorMessage = apiError.localizedDescription
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        showError = true
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    isLoading = false
+                    errorMessage = "An unexpected error occurred. Please try again."
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        showError = true
+                    }
+                }
+            }
+        }
+    }
+
     private func storeCredentials() {
         // Store credentials securely in keychain
         let credentials = LoginCredentials(username: username, password: password)

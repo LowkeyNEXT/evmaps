@@ -71,13 +71,30 @@ class Api {
         self.provider = provider
     }
 
+    func webLoginUrl() throws -> URL? {
+        let queryItems = [
+            URLQueryItem(name: "client_id", value: configuration.serviceId),
+            URLQueryItem(name: "redirect_uri", value: "https://prd.eu-ccapi.kia.com:8080/api/v1/user/oauth2/redirect"),
+            URLQueryItem(name: "response_type", value: "code"),
+            URLQueryItem(name: "lang", value: "en"),
+            URLQueryItem(name: "state", value: "ccsp"),
+        ]
+
+        return try provider.request(
+            endpoint: .oauth2UserAuthorize,
+            queryItems: queryItems,
+            headers: commonNavigationHeaders()
+        ).urlRequest.url
+    }
+
     /// Authenticate user and establish session with vehicle API using RSA-encrypted authentication
     /// - Parameters:
     ///   - username: User's login username/email
     ///   - password: User's login password
+    ///   - recaptchaToken: Optional reCAPTCHA verification token
     /// - Returns: Complete authorization data including tokens and device ID
     /// - Throws: Authentication errors, network errors, or validation failures
-    func login(username: String, password: String) async throws -> AuthorizationData {
+    func login(username: String, password: String, recaptchaToken: String? = nil) async throws -> AuthorizationData {
         cleanCookies()
         // Step 0: Get connector authorization (handles 302 redirect to get next_uri)
         let referer: String
@@ -116,9 +133,15 @@ class Api {
             username: username,
             password: password,
             rsaKey: rsaKey,
-            csrfToken: csrfToken
+            csrfToken: csrfToken,
+            recaptchaToken: recaptchaToken
         )
-        
+
+        // Step 6: Exchange authorization code for tokens
+        return try await login(authorizationCode: authorizationCode)
+    }
+
+    func login(authorizationCode: String) async throws -> AuthorizationData {
         // Step 6: Exchange authorization code for tokens
         let tokenResponse: TokenResponse
         do {
@@ -131,7 +154,7 @@ class Api {
         // Generate device ID and stamp for compatibility
         let stamp = AuthorizationData.generateStamp(for: configuration)
         let deviceId = try await deviceId(stamp: stamp)
-        
+
         // Convert to existing AuthorizationData format
         let authorizationData = AuthorizationData(
             stamp: stamp,
@@ -141,7 +164,7 @@ class Api {
             refreshToken: tokenResponse.refreshToken,
             isCcuCCS2Supported: true
         )
-        
+
         provider.authorization = authorizationData
         try await notificationRegister(deviceId: deviceId)
         return authorizationData
@@ -473,7 +496,7 @@ extension Api {
     }
 
     /// Login - Step 5: Encrypted Sign-In
-    func signIn(referer: String, username: String, password: String, rsaKey: RSAEncryptionService.RSAKeyData, csrfToken: String) async throws -> String {
+    func signIn(referer: String, username: String, password: String, rsaKey: RSAEncryptionService.RSAKeyData, csrfToken: String, recaptchaToken: String? = nil) async throws -> String {
         // Encrypt password
         let encryptedPassword = try rsaService.encryptPassword(password, with: rsaKey)
 
@@ -482,7 +505,7 @@ extension Api {
         }
 
         // Prepare form data
-        let form: [String: String] = [
+        var form: [String: String] = [
             "client_id": configuration.serviceId,
             "encryptedPassword": "true",
             "orgHmgSid": "",
@@ -497,6 +520,12 @@ extension Api {
             "connector_session_key": connectorSessionKey,
             "_csrf": csrfToken
         ]
+        
+        // Add reCAPTCHA token if provided
+        if let recaptchaToken = recaptchaToken {
+            form["g-recaptcha-response"] = recaptchaToken
+            logInfo("Including reCAPTCHA token in sign-in request", category: .auth)
+        }
 
         let referalUrl = try await provider.request(
             with: .post,
