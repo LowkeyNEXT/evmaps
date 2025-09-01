@@ -323,10 +323,15 @@ The plan leverages your existing strong foundation (comprehensive API integratio
 - [x] Stop using keychain in extensions
 - [x] Create tests for this communication
 
-### Final Testing & Polish
-- [ ] Performance testing (60fps target)
-- [ ] Accessibility audit
-- [ ] User testing sessions  
-- [ ] Code review and refactoring
-- [ ] Documentation updates
-- [ ] **FINAL BUILD** verification
+### Phase 7: Implement MQTT communication with car
+
+- [] Find best swift framework for MQTT communication or write new
+- [] Implement activation of MQTT communication with car, communication sequenc is in folder MQTT Raw
+- [] Create new debug view that will show communication status with car and live updates to the car values
+- [] If car is charging or on move use MQTT value for car power and charge
+
+// ### Phase 8: Use new MQTT communication in extension
+
+// ### Phase 9: Car play debug screen
+// [] Implement new car play app target like in article https://fotidim.com/automaker-carplay-apps-without-apples-or-automaker-s-blessings-3d7b9618923d
+// [] Add to car play screen support to show remote log from kia extension

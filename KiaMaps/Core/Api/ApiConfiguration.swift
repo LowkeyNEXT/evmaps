@@ -76,9 +76,12 @@ protocol ApiConfiguration {
     
     /// Encrypted configuration token for API requests
     var cfb: String { get }
-
+    
     /// Short character name for brand used for API
     var brandCode: String { get }
+
+    /// Name for brand
+    var brandName: String { get }
 
     /// Push notification type ("APNS" for iOS, "GCM" for Android)
     var pushType: String { get }
@@ -213,6 +216,17 @@ enum ApiConfigurationEurope: String, ApiConfiguration {
         }
     }
 
+    var brandName: String {
+        switch self {
+        case .kia:
+            "Kia"
+        case .hyundai:
+            "Hyundai"
+        case .genesis:
+            "Genesis"
+        }
+    }
+
     var pushType: String {
         if self == .kia {
             "APNS"
@@ -258,5 +272,6 @@ struct MockApiConfiguration: ApiConfiguration {
     var authClientId: String = "mock-auth-client-789"
     var cfb: String = "mockCfbToken123="
     var brandCode: String = "M"
+    var brandName: String = "Mocker"
     var pushType: String = "MOCK"
 }

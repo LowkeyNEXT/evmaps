@@ -392,7 +392,7 @@ struct MQTTDebugView: View {
         
         Task {
             do {
-                try await mqttManager.activateMQTTCommunication(for: selectedVehicle)
+                try await mqttManager.activateMQTTCommunication(for: selectedVehicle.vehicleId)
             } catch {
                 logError("MQTT connection failed: \(error.localizedDescription)", category: .mqtt)
                 connectionStartTime = nil

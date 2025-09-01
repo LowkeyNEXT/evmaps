@@ -71,13 +71,30 @@ class Api {
         self.provider = provider
     }
 
+    func webLoginUrl() throws -> URL? {
+        let queryItems = [
+            URLQueryItem(name: "client_id", value: configuration.serviceId),
+            URLQueryItem(name: "redirect_uri", value: "https://prd.eu-ccapi.kia.com:8080/api/v1/user/oauth2/redirect"),
+            URLQueryItem(name: "response_type", value: "code"),
+            URLQueryItem(name: "lang", value: "en"),
+            URLQueryItem(name: "state", value: "ccsp"),
+        ]
+
+        return try provider.request(
+            endpoint: .oauth2UserAuthorize,
+            queryItems: queryItems,
+            headers: commonNavigationHeaders()
+        ).urlRequest.url
+    }
+
     /// Authenticate user and establish session with vehicle API using RSA-encrypted authentication
     /// - Parameters:
     ///   - username: User's login username/email
     ///   - password: User's login password
+    ///   - recaptchaToken: Optional reCAPTCHA verification token
     /// - Returns: Complete authorization data including tokens and device ID
     /// - Throws: Authentication errors, network errors, or validation failures
-    func login(username: String, password: String) async throws -> AuthorizationData {
+    func login(username: String, password: String, recaptchaToken: String? = nil) async throws -> AuthorizationData {
         cleanCookies()
         // Step 0: Get connector authorization (handles 302 redirect to get next_uri)
         let referer: String
@@ -116,9 +133,15 @@ class Api {
             username: username,
             password: password,
             rsaKey: rsaKey,
-            csrfToken: csrfToken
+            csrfToken: csrfToken,
+            recaptchaToken: recaptchaToken
         )
-        
+
+        // Step 6: Exchange authorization code for tokens
+        return try await login(authorizationCode: authorizationCode)
+    }
+
+    func login(authorizationCode: String) async throws -> AuthorizationData {
         // Step 6: Exchange authorization code for tokens
         let tokenResponse: TokenResponse
         do {
@@ -131,7 +154,7 @@ class Api {
         // Generate device ID and stamp for compatibility
         let stamp = AuthorizationData.generateStamp(for: configuration)
         let deviceId = try await deviceId(stamp: stamp)
-        
+
         // Convert to existing AuthorizationData format
         let authorizationData = AuthorizationData(
             stamp: stamp,
@@ -141,7 +164,7 @@ class Api {
             refreshToken: tokenResponse.refreshToken,
             isCcuCCS2Supported: true
         )
-        
+
         provider.authorization = authorizationData
         try await notificationRegister(deviceId: deviceId)
         return authorizationData
@@ -164,7 +187,7 @@ class Api {
     /// - Returns: Complete vehicle response containing all registered vehicles
     /// - Throws: Network errors or authentication failures
     func vehicles() async throws -> VehicleResponse {
-        guard let authorization = authorization else {
+        guard authorization != nil else {
             throw ApiError.unauthorized
         }
         return try await provider.request(endpoint: .vehicles).response()
@@ -188,7 +211,7 @@ class Api {
     /// - Returns: Complete vehicle status including battery, location, and system states
     /// - Note: Uses CCS2 endpoint if supported, fallback to standard endpoint
     /// - Throws: Network errors or data parsing failures
-    func vehicleCachedStatus(_ vehicleId: UUID) async throws -> VehicleStatusResponse {
+    func vehicleCachedStatus(_ vehicleId: UUID) async throws -> VehicleStateResponse {
         guard let authorization = authorization else {
             throw ApiError.unauthorized
         }
@@ -215,7 +238,7 @@ class Api {
     ///   - pin: Vehicle PIN (required for climate control)
     /// - Returns: Operation result ID for tracking
     func startClimate(_ vehicleId: UUID, options: ClimateControlOptions, pin: String) async throws -> UUID {
-        guard let authorization = authorization?.accessToken else {
+        guard authorization?.accessToken != nil else {
             throw ApiError.unauthorized
         }
         guard !pin.isEmpty else {
@@ -251,7 +274,7 @@ class Api {
     /// - Parameter vehicleId: The vehicle ID
     /// - Returns: Operation result ID for tracking
     func stopClimate(_ vehicleId: UUID) async throws -> UUID {
-        guard let authorization = authorization?.accessToken else {
+        guard authorization?.accessToken != nil else {
             throw ApiError.unauthorized
         }
         return try await provider.request(
@@ -305,7 +328,7 @@ extension Api {
      * MQTT Step 3: Get vehicle metadata and supported protocols for MQTT
      * GET /api/v3/servicehub/vehicles/metadatalist?carId=<carId>&brand=K
      */
-    func fetchMQTTVehicleMetadata(for vehicle: Vehicle, clientId: String) async throws -> [MQTTVehicleMetadata] {
+    func fetchMQTTVehicleMetadata(for vehicleId: UUID, clientId: String) async throws -> [MQTTVehicleMetadata] {
         guard authorization?.accessToken != nil else {
             throw ApiError.unauthorized
         }
@@ -313,7 +336,7 @@ extension Api {
         let response: VehicleMetadataResponse = try await provider.request(
             endpoint: .mqttVehicleMetadata,
             queryItems: [
-                URLQueryItem(name: "carId", value: vehicle.vehicleId.uuidString),
+                URLQueryItem(name: "carId", value: vehicleId.uuidString),
                 URLQueryItem(name: "brand", value: configuration.brandCode)
             ],
             headers: [
@@ -328,7 +351,7 @@ extension Api {
      * MQTT Step 4: Subscribe to specific vehicle protocols for MQTT communication
      * POST /api/v3/servicehub/device/protocol
      */
-    func subscribeMQTTVehicleProtocols(for vehicle: Vehicle, clientId: String, protocolId: any MQTTProtocol, protocols: [any MQTTProtocol]) async throws {
+    func subscribeMQTTVehicleProtocols(for vehicleId: UUID, clientId: String, protocolId: any MQTTProtocol, protocols: [any MQTTProtocol]) async throws {
         guard authorization?.accessToken != nil else {
             throw ApiError.unauthorized
         }
@@ -337,7 +360,7 @@ extension Api {
         let request = ProtocolSubscriptionRequest(
             protocols: protocols,
             protocolId: protocolId,
-            carId: vehicle.vehicleId.uuidString,
+            carId: vehicleId,
             brand: configuration.brandCode
         )
 
@@ -473,7 +496,7 @@ extension Api {
     }
 
     /// Login - Step 5: Encrypted Sign-In
-    func signIn(referer: String, username: String, password: String, rsaKey: RSAEncryptionService.RSAKeyData, csrfToken: String) async throws -> String {
+    func signIn(referer: String, username: String, password: String, rsaKey: RSAEncryptionService.RSAKeyData, csrfToken: String, recaptchaToken: String? = nil) async throws -> String {
         // Encrypt password
         let encryptedPassword = try rsaService.encryptPassword(password, with: rsaKey)
 
@@ -482,7 +505,7 @@ extension Api {
         }
 
         // Prepare form data
-        let form: [String: String] = [
+        var form: [String: String] = [
             "client_id": configuration.serviceId,
             "encryptedPassword": "true",
             "orgHmgSid": "",
@@ -497,6 +520,12 @@ extension Api {
             "connector_session_key": connectorSessionKey,
             "_csrf": csrfToken
         ]
+        
+        // Add reCAPTCHA token if provided
+        if let recaptchaToken = recaptchaToken {
+            form["g-recaptcha-response"] = recaptchaToken
+            logInfo("Including reCAPTCHA token in sign-in request", category: .auth)
+        }
 
         let referalUrl = try await provider.request(
             with: .post,

@@ -7,7 +7,6 @@
 //
 
 import Foundation
-import os.log
 
 /// Extension to Api class that handles automatic token refresh and retry logic
 extension Api {
@@ -88,18 +87,73 @@ extension Api {
     /// - parameter authData: The authorization data to check
     /// - returns: True if token is expired or expires within the next 5 minutes
     private func isTokenExpired(_ authData: AuthorizationData) -> Bool {
-        // Note: This implementation assumes the token was issued when stored
-        // A more robust implementation would store the issue timestamp
+        // Decode JWT token to get expiration time
+        guard let expirationDate = decodeJWTExpiration(from: authData.accessToken) else {
+            logWarning("Unable to decode JWT expiration, assuming expired", category: .auth)
+            return true // If we can't decode, assume expired for safety
+        }
         
-        // For now, we'll consider a token expired if we get a 401 error
-        // This method serves as a placeholder for potential future timestamp-based checking
+        // Check if token expires within the next 5 minutes (300 seconds buffer)
+        let expirationBuffer: TimeInterval = 5 * 60 // 5 minutes
+        let isExpired = Date().addingTimeInterval(expirationBuffer) >= expirationDate
         
-        // You could enhance this by:
-        // 1. Storing the token issue timestamp
-        // 2. Calculating actual expiration time
-        // 3. Adding a buffer (e.g., refresh 5 minutes before expiration)
+        if isExpired {
+            logInfo("JWT token is expired or expires within 5 minutes", category: .auth)
+        } else {
+            let timeUntilExpiration = expirationDate.timeIntervalSinceNow
+            logDebug("JWT token is valid for \(Int(timeUntilExpiration)) more seconds", category: .auth)
+        }
         
-        return false // Let the 401 error be the primary indicator
+        return isExpired
+    }
+    
+    /// Decodes JWT token to extract expiration date
+    /// - parameter token: JWT token string
+    /// - returns: Expiration date if successfully decoded, nil otherwise
+    private func decodeJWTExpiration(from token: String) -> Date? {
+        // JWT tokens have format: header.payload.signature
+        let components = token.components(separatedBy: ".")
+        guard components.count >= 2 else {
+            logError("Invalid JWT token format", category: .auth)
+            return nil
+        }
+        
+        // Decode the payload (second component)
+        let payload = components[1]
+        
+        // Add padding if needed (JWT base64 encoding may not include padding)
+        var paddedPayload = payload
+        let paddingLength = 4 - (payload.count % 4)
+        if paddingLength != 4 {
+            paddedPayload += String(repeating: "=", count: paddingLength)
+        }
+        
+        // Decode base64
+        guard let data = Data(base64Encoded: paddedPayload) else {
+            logError("Failed to decode JWT payload from base64", category: .auth)
+            return nil
+        }
+        
+        // Parse JSON
+        do {
+            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                logError("JWT payload is not valid JSON", category: .auth)
+                return nil
+            }
+            
+            // Extract 'exp' claim (expiration time as Unix timestamp)
+            guard let exp = json["exp"] as? TimeInterval else {
+                logError("JWT payload does not contain 'exp' claim", category: .auth)
+                return nil
+            }
+            
+            // Convert Unix timestamp to Date
+            return Date(timeIntervalSince1970: exp)
+            
+        } catch {
+            logError("Failed to parse JWT payload JSON: \(error.localizedDescription)", category: .auth)
+            return nil
+        }
     }
 }
 
@@ -114,7 +168,7 @@ extension Api {
     }
     
     /// Fetch cached vehicle status with automatic token refresh
-    func vehicleCachedStatusWithAutoRefresh(_ vehicleId: UUID) async throws -> VehicleStatusResponse {
+    func vehicleCachedStatusWithAutoRefresh(_ vehicleId: UUID) async throws -> VehicleStateResponse {
         return try await executeWithAutoRefresh {
             return try await self.vehicleCachedStatus(vehicleId)
         }
@@ -131,6 +185,13 @@ extension Api {
     func logoutWithAutoRefresh() async throws {
         try await executeWithAutoRefresh {
             try await self.logout()
+        }
+    }
+
+    /// MQTT device host with automatic token refresh (in case logout needs valid token)
+    func fetchMQTTDeviceHostAutoRefresh() async throws -> MQTTHostInfo {
+        try await executeWithAutoRefresh {
+            try await self.fetchMQTTDeviceHost()
         }
     }
 }

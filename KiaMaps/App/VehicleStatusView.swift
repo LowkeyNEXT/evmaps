@@ -1,5 +1,5 @@
 //
-//  VehicleStatusView.swift
+//  VehicleStateView.swift
 //  KiaMaps
 //
 //  Created by Lukas Foldyna on 27.06.2024.
@@ -9,10 +9,10 @@
 import SwiftUI
 import MapKit
 
-struct VehicleStatusView: View {
+struct VehicleStateView: View {
     let brand: String
     let vehicle: Vehicle
-    let vehicleStatus: VehicleStatus
+    let VehicleState: VehicleState
     let lastUpdateTime: Date
 
     private let percentNumberFormatter: NumberFormatter = {
@@ -30,38 +30,38 @@ struct VehicleStatusView: View {
     var body: some View {
         List {
             Group {
-                mainSection(vehicle: vehicle, status: vehicleStatus, lastUpdateTime: lastUpdateTime)
+                mainSection(vehicle: vehicle, status: VehicleState, lastUpdateTime: lastUpdateTime)
 
                 DisclosureGroup("Body") {
-                    bodySection(body: vehicleStatus.body)
+                    bodySection(body: VehicleState.body)
                 }
 
                 DisclosureGroup("Cabin") {
-                    cabinSection(cabin: vehicleStatus.cabin)
+                    cabinSection(cabin: VehicleState.cabin)
                 }
 
                 DisclosureGroup("Chassis") {
-                    chasisSection(chassis: vehicleStatus.chassis)
+                    chasisSection(chassis: VehicleState.chassis)
                 }
 
                 DisclosureGroup("Drivetrain") {
-                    drivetrainSection(drivetrain: vehicleStatus.drivetrain)
+                    drivetrainSection(drivetrain: VehicleState.drivetrain)
                 }
 
                 DisclosureGroup("Electronics") {
-                    electronicsSection(electronics: vehicleStatus.electronics)
+                    electronicsSection(electronics: VehicleState.electronics)
                 }
 
                 DisclosureGroup("Green") {
-                    greenSection(green: vehicleStatus.green)
+                    greenSection(green: VehicleState.green)
                 }
 
                 DisclosureGroup("Service") {
-                    serviceSection(service: vehicleStatus.service, remoteControl: vehicleStatus.remoteControl)
+                    serviceSection(service: VehicleState.service, remoteControl: VehicleState.remoteControl)
                 }
 
                 DisclosureGroup("Location") {
-                    if let location = vehicleStatus.location {
+                    if let location = VehicleState.location {
                         locationSection(location: location)
                     }
                 }
@@ -69,7 +69,7 @@ struct VehicleStatusView: View {
         }
     }
     
-    private func mainSection(vehicle: Vehicle, status: VehicleStatus, lastUpdateTime: Date) -> some View {
+    private func mainSection(vehicle: Vehicle, status: VehicleState, lastUpdateTime: Date) -> some View {
         Group {
             DataRowView(icon: .car, label: brand + " - " + vehicle.nickname + " (" + vehicle.year + ")") {
                 Text("VIN: " + vehicle.vin)
@@ -553,7 +553,7 @@ struct VehicleStatusView: View {
     }
 
     @ViewBuilder
-    func serviceSection(service: Service, remoteControl: VehicleStatus.RemoteControl) -> some View {
+    func serviceSection(service: VehicleService, remoteControl: VehicleState.RemoteControl) -> some View {
         Group {
             Section("Connected Car") {
                 DataStateRowView(icon: .update, label: "Remote Control - Available", value: service.connectedCar.remoteControl.available, kind: .fault)
@@ -567,7 +567,7 @@ struct VehicleStatusView: View {
     }
 
     @ViewBuilder
-    func locationSection(location: Location) -> some View {
+    func locationSection(location: VehicleLocation) -> some View {
         Group {
             Section("Vehicle Position") {
                 DataRowView(icon: .info, label: "Latitude") {
@@ -602,7 +602,7 @@ struct VehicleStatusView: View {
     // MARK: - Reservation Helper Methods
     
     @ViewBuilder
-    private func reservationDepartureSection(departure: Reservation.Departure) -> some View {
+    private func reservationDepartureSection(departure: VehicleReservation.Departure) -> some View {
         Group {
             Section("Departure Schedule 1") {
                 DataRowView(icon: .clock, label: "Time") {
@@ -633,7 +633,7 @@ struct VehicleStatusView: View {
     }
     
     @ViewBuilder
-    private func reservationOffPeakSection(offPeak1: Reservation.OffPeakTime, offPeak2: Reservation.OffPeakTime) -> some View {
+    private func reservationOffPeakSection(offPeak1: VehicleReservation.OffPeakTime, offPeak2: VehicleReservation.OffPeakTime) -> some View {
         Group {
             Section("Off-Peak Charging 1") {
                 DataRowView(icon: .clock, label: "Start Time") {
@@ -661,7 +661,7 @@ struct VehicleStatusView: View {
         }
     }
     
-    private func formatWeekdays(schedule: Reservation.Departure.Schedule) -> String {
+    private func formatWeekdays(schedule: VehicleReservation.Departure.Schedule) -> String {
         var days: [String] = []
         if schedule.monday == 1 { days.append("Mon") }
         if schedule.tuesday == 1 { days.append("Tue") }
@@ -673,7 +673,7 @@ struct VehicleStatusView: View {
         return days.isEmpty ? "None" : days.joined(separator: ", ")
     }
     
-    private func formatWeekdays(offPeak: Reservation.OffPeakTime) -> String {
+    private func formatWeekdays(offPeak: VehicleReservation.OffPeakTime) -> String {
         return "See vehicle app for schedule details"
     }
 }

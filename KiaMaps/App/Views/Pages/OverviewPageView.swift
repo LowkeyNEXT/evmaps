@@ -7,13 +7,17 @@
 //
 
 import SwiftUI
+import Combine
 
 /// Overview page showing battery hero, quick actions, and vehicle status
 struct OverviewPageView: View {
+    let brandName: String
     let vehicle: Vehicle
-    let status: VehicleStatus
+    let status: VehicleState
     let lastUpdateTime: Date
     let isActive: Bool
+    let mqttConnectionStatus: MQTTConnectionStatus
+    let receivedMQTTUpdate: Bool
     let onRefresh: () async -> Void
     
     @State private var showClimateModal = false
@@ -31,7 +35,7 @@ struct OverviewPageView: View {
                 quickActionsSection
                 
                 // Vehicle Status Grid
-                vehicleStatusGrid
+                VehicleStateGrid
                 
                 // More Details Button
                 moreDetailsButton
@@ -75,7 +79,7 @@ struct OverviewPageView: View {
             NavigationView {
                 VehicleMapView(
                     vehicle: vehicle,
-                    vehicleStatus: status,
+                    vehicleState: status,
                     vehicleLocation: status.location!,
                     onChargingStationTap: { station in
                         // Handle charging station tap
@@ -108,7 +112,7 @@ struct OverviewPageView: View {
                 ScrollView {
                     VStack(spacing: KiaDesign.Spacing.xl) {
                         InteractiveVehicleSilhouetteView(
-                            vehicleStatus: status
+                            vehicleState: status
                         )
                     }
                     .padding(KiaDesign.Spacing.large)
@@ -139,7 +143,7 @@ struct OverviewPageView: View {
     private var quickActionsSection: some View {
         KiaCard {
             QuickActionsView(
-                vehicleStatus: status,
+                VehicleState: status,
                 onLockAction: {
                     // Show vehicle silhouette modal
                     showLockModal = true
@@ -162,7 +166,7 @@ struct OverviewPageView: View {
     
     // MARK: - Vehicle Status Grid
     
-    private var vehicleStatusGrid: some View {
+    private var VehicleStateGrid: some View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: KiaDesign.Spacing.medium) {
             // Doors Status - using the available lock data from cabin
             let row1 = status.cabin.door.row1
@@ -194,12 +198,12 @@ struct OverviewPageView: View {
                        batteryHealth > 0.8 ? KiaDesign.Colors.warning : KiaDesign.Colors.error
             )
             
-            // Last Update
+            // Last Update - show MQTT indicator if receiving real-time data
             statusCard(
-                icon: "clock.fill",
-                title: "Updated",
-                value: timeAgoString(from: lastUpdateTime),
-                color: KiaDesign.Colors.textSecondary
+                icon: receivedMQTTUpdate ? "antenna.radiowaves.left.and.right" : "clock.fill",
+                title: receivedMQTTUpdate ? "Live" : "Updated",
+                value: receivedMQTTUpdate ? "Real-time" : timeAgoString(from: lastUpdateTime),
+                color: receivedMQTTUpdate ? KiaDesign.Colors.primary : KiaDesign.Colors.textSecondary
             )
         }
     }
@@ -262,7 +266,7 @@ struct OverviewPageView: View {
                     vehicleDetailRow(
                         icon: "tag.fill",
                         title: "Brand",
-                        value: getBrandName()
+                        value: brandName
                     )
                 }
             }
@@ -287,8 +291,8 @@ struct OverviewPageView: View {
                     // Service data - not available in current API response
                     diagnosticItem("Service Due", "Check app")
                     
-                    // Last update time from API
-                    diagnosticItem("Last Updated", timeAgoString(from: lastUpdateTime))
+                    // Last update time from API or MQTT
+                    diagnosticItem("Last Updated", receivedMQTTUpdate ? "Real-time" : timeAgoString(from: lastUpdateTime))
                 }
             }
         }
@@ -306,21 +310,32 @@ struct OverviewPageView: View {
                     // Generate activity based on current vehicle status
                     if status.isCharging {
                         let batteryLevel = Int(status.green.batteryManagement.batteryRemain.ratio)
-                        activityItem("Currently charging (\(batteryLevel)%)", "Now", "bolt.circle.fill", KiaDesign.Colors.charging)
+                        let timeText = receivedMQTTUpdate ? "Live" : "Now"
+                        activityItem("Currently charging (\(batteryLevel)%)", timeText, "bolt.circle.fill", KiaDesign.Colors.charging)
                     } else {
                         let batteryLevel = Int(status.green.batteryManagement.batteryRemain.ratio)
-                        activityItem("Battery at \(batteryLevel)%", timeAgoString(from: lastUpdateTime), "battery.100", KiaDesign.Colors.success)
+                        let timeText = receivedMQTTUpdate ? "Live" : timeAgoString(from: lastUpdateTime)
+                        activityItem("Battery at \(batteryLevel)%", timeText, "battery.100", KiaDesign.Colors.success)
                     }
                     
                     // Vehicle ready status
                     if status.drivingReady {
-                        activityItem("Vehicle ready", timeAgoString(from: lastUpdateTime), "car.fill", KiaDesign.Colors.primary)
+                        let timeText = receivedMQTTUpdate ? "Live" : timeAgoString(from: lastUpdateTime)
+                        activityItem("Vehicle ready", timeText, "car.fill", KiaDesign.Colors.primary)
                     } else {
-                        activityItem("Vehicle parked", timeAgoString(from: lastUpdateTime), "car.side.fill", KiaDesign.Colors.textSecondary)
+                        let timeText = receivedMQTTUpdate ? "Live" : timeAgoString(from: lastUpdateTime)
+                        activityItem("Vehicle parked", timeText, "car.side.fill", KiaDesign.Colors.textSecondary)
+                    }
+                    
+                    // MQTT connection status
+                    if status.isCharging && mqttConnectionStatus == .connected {
+                        activityItem("MQTT connected", "Real-time updates active", "antenna.radiowaves.left.and.right", KiaDesign.Colors.primary)
                     }
                     
                     // Last status update
-                    activityItem("Status updated", timeAgoString(from: lastUpdateTime), "arrow.clockwise", KiaDesign.Colors.textSecondary)
+                    let updateText = receivedMQTTUpdate ? "Real-time updates" : "Status updated"
+                    let updateTime = receivedMQTTUpdate ? "Active" : timeAgoString(from: lastUpdateTime)
+                    activityItem(updateText, updateTime, "arrow.clockwise", KiaDesign.Colors.textSecondary)
                 }
             }
         }
@@ -426,22 +441,19 @@ struct OverviewPageView: View {
         }
         return "\(Int(distance)) km"
     }
-    
-    private func getBrandName() -> String {
-        // Determine brand based on vehicle parameters or API configuration
-        // This is a simplified version - in a real app, this would come from proper configuration
-        return "Kia"
-    }
 }
 
 // MARK: - Preview
 
 #Preview("Overview Page View") {
     OverviewPageView(
+        brandName: "Mocker",
         vehicle: MockVehicleData.mockVehicle,
         status: MockVehicleData.lowTirePressure,
         lastUpdateTime: .now,
         isActive: true,
+        mqttConnectionStatus: .disconnected,
+        receivedMQTTUpdate: false,
         onRefresh: {
             try? await Task.sleep(nanoseconds: 1_000_000_000)
         }

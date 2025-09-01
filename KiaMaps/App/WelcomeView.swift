@@ -46,6 +46,9 @@ struct WelcomeView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(KiaDesign.Colors.background)
         .navigationTitle("Kia")
+        .onAppear() {
+            HTTPCookieStorage.shared.removeCookies(since: .distantPast)
+        }
     }
 }
 

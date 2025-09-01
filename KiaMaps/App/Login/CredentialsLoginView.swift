@@ -1,15 +1,14 @@
 //
-//  LoginView.swift
+//  CredentialsLoginView.swift
 //  KiaMaps
 //
-//  Created by Lukas Foldyna on 29.05.2024.
-//  Copyright © 2024 Lukas Foldyna. All rights reserved.
+//  Created by Lukáš Foldýna on 1/9/25.
+//  Copyright © 2025 Apple. All rights reserved.
 //
 
 import SwiftUI
-import os.log
 
-struct LoginView: View {
+struct CredentialsLoginView: View {
     @State private var username: String = ""
     @State private var password: String = ""
     @State private var isLoading: Bool = false
@@ -17,21 +16,27 @@ struct LoginView: View {
     @State private var showError: Bool = false
     @State private var usernameError: String = ""
     @State private var showUsernameError: Bool = false
-    
+    @State private var recaptchaToken: String? = nil
+    @State private var isVerifyingRecaptcha: Bool = false
+
     @FocusState private var focusedField: Field?
-    
+
     enum Field {
         case username
         case password
     }
-    
+
     let configuration: AppConfiguration.Type
+    let api: Api
     let onLoginSuccess: (AuthorizationData) -> Void
-    
-    private var api: Api {
-        Api(configuration: configuration.apiConfiguration, rsaService: .init())
+
+    init(configuration: AppConfiguration.Type, onLoginSuccess: @escaping (AuthorizationData) -> Void) {
+        let api = Api(configuration: configuration.apiConfiguration, rsaService: .init())
+        self.configuration = configuration
+        self.api = api
+        self.onLoginSuccess = onLoginSuccess
     }
-    
+
     var body: some View {
         ScrollView {
             VStack(spacing: KiaDesign.Spacing.large) {
@@ -145,12 +150,12 @@ struct LoginView: View {
                 // Login Button
                 VStack(spacing: KiaDesign.Spacing.medium) {
                     KiaButton(
-                        "Sign In",
-                        icon: "arrow.right",
+                        isVerifyingRecaptcha ? "Verifying..." : "Sign In",
+                        icon: isVerifyingRecaptcha ? "checkmark.shield" : "arrow.right",
                         style: .primary,
                         size: .large,
-                        isEnabled: !isLoading && !username.isEmpty && !password.isEmpty && !showUsernameError,
-                        isLoading: isLoading,
+                        isEnabled: !isLoading && !username.isEmpty && !password.isEmpty && !showUsernameError && !isVerifyingRecaptcha,
+                        isLoading: isLoading || isVerifyingRecaptcha,
                         isFullWidth: true,
                         hapticFeedback: .medium,
                         action: {
@@ -165,9 +170,6 @@ struct LoginView: View {
                 .padding(.bottom, KiaDesign.Spacing.large)
             }
         }
-        .scrollDismissesKeyboard(.interactively)
-        .background(KiaDesign.Colors.background)
-        .navigationTitle("Login to Kia")
         .onAppear {
             loadSavedCredentials()
             // Auto-focus username field if no saved credentials
@@ -178,16 +180,16 @@ struct LoginView: View {
             }
         }
     }
-    
+
     private func performLogin() async {
         // Validate email before attempting login
         validateUsername(username)
-        
+
         // Don't proceed if there are validation errors
         guard !showUsernameError else {
             return
         }
-        
+
         // Hide previous errors
         withAnimation(.easeInOut(duration: 0.3)) {
             showError = false
@@ -196,14 +198,14 @@ struct LoginView: View {
             // Set loading state
             isLoading = true
         }
-        
+
         do {
-            // Attempt login with API
-            let authorizationData = try await api.login(username: username, password: password)
-            
+            // Login with API (including reCAPTCHA token)
+            let authorizationData = try await api.login(username: username, password: password, recaptchaToken: "")
+
             // Store credentials and authorization data
             storeCredentials()
-            
+
             // Call success callback with authorization data
             await MainActor.run {
                 isLoading = false
@@ -227,34 +229,36 @@ struct LoginView: View {
             }
         }
     }
-    
+
+
+
     private func storeCredentials() {
         // Store credentials securely in keychain
         let credentials = LoginCredentials(username: username, password: password)
         LoginCredentialManager.store(credentials: credentials)
     }
-    
+
     private func loadSavedCredentials() {
         if let savedCredentials = LoginCredentialManager.retrieveCredentials() {
             username = savedCredentials.username
             password = savedCredentials.password
         }
     }
-    
+
     private func validateUsername(_ email: String) {
         // Clear previous errors first
         withAnimation(.easeInOut(duration: 0.2)) {
             showUsernameError = false
             usernameError = ""
         }
-        
+
         // Don't validate empty field (let required field validation handle it)
         guard !email.isEmpty else { return }
-        
+
         // Email validation regex
         let emailRegex = #"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"#
         let emailPredicate = NSPredicate(format: "SELF MATCHES %@", emailRegex)
-        
+
         if !emailPredicate.evaluate(with: email) {
             withAnimation(.easeInOut(duration: 0.2)) {
                 usernameError = "Please enter a valid email address"
@@ -264,34 +268,10 @@ struct LoginView: View {
     }
 }
 
-// MARK: - Custom Text Field Style
-
-struct KiaTextFieldStyle: TextFieldStyle {
-    let hasError: Bool
-    
-    init(hasError: Bool = false) {
-        self.hasError = hasError
-    }
-    
-    func _body(configuration: TextField<_Label>) -> some View {
-        configuration
-            .padding(KiaDesign.Spacing.medium)
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(KiaDesign.Colors.cardBackground)
-                    .stroke(
-                        hasError ? KiaDesign.Colors.error : KiaDesign.Colors.textTertiary.opacity(0.2), 
-                        lineWidth: hasError ? 2 : 1
-                    )
-            )
-            .font(KiaDesign.Typography.body)
-    }
-}
-
 // MARK: - Preview
 
 #Preview {
-    LoginView(configuration: AppConfiguration.self) { authData in
+    CredentialsLoginView(configuration: AppConfiguration.self) { authData in
         logInfo("Login successful for user", category: .auth)
     }
 }

@@ -8,12 +8,12 @@
 
 import Foundation
 
-/// Centralized mock data provider for VehicleStatusResponse and related structures
+/// Centralized mock data provider for VehicleStateResponse and related structures
 struct MockVehicleData {
     
     // MARK: - Private JSON Factory
     
-    public static func createVehicleStatusJSON(
+    public static func createVehicleStateJSON(
         batteryLevel: Int,
         isCharging: Bool,
         drivingReady: Bool,
@@ -617,13 +617,13 @@ struct MockVehicleData {
     
     // MARK: - Vehicle Status Factory
     
-    private static func createVehicleStatus(
+    private static func createVehicleState(
         batteryLevel: Int,
         isCharging: Bool,
         drivingReady: Bool,
         scenario: String
-    ) -> VehicleStatus {
-        let jsonString = createVehicleStatusJSON(
+    ) -> VehicleState {
+        let jsonString = createVehicleStateJSON(
             batteryLevel: batteryLevel,
             isCharging: isCharging,
             drivingReady: drivingReady,
@@ -636,7 +636,7 @@ struct MockVehicleData {
         
         do {
             let decoder = JSONDecoder()
-            return try decoder.decode(VehicleStatus.self, from: jsonData)
+            return try decoder.decode(VehicleState.self, from: jsonData)
         } catch {
             fatalError("Failed to decode mock vehicle status: \(error)")
         }
@@ -645,7 +645,7 @@ struct MockVehicleData {
     // MARK: - Public Mock Data
     
     /// Standard driving scenario - 75% battery, ready to drive
-    static let standard = createVehicleStatus(
+    static let standard = createVehicleState(
         batteryLevel: 75,
         isCharging: false,
         drivingReady: true,
@@ -653,7 +653,7 @@ struct MockVehicleData {
     )
     
     /// Charging scenario - 45% battery, actively charging
-    static let charging = createVehicleStatus(
+    static let charging = createVehicleState(
         batteryLevel: 45,
         isCharging: true,
         drivingReady: false,
@@ -661,7 +661,7 @@ struct MockVehicleData {
     )
     
     /// Low battery scenario - 12% battery, needs charging
-    static let lowBattery = createVehicleStatus(
+    static let lowBattery = createVehicleState(
         batteryLevel: 12,
         isCharging: false,
         drivingReady: true,
@@ -669,7 +669,7 @@ struct MockVehicleData {
     )
     
     /// Full battery scenario - 100% battery, just finished charging
-    static let fullBattery = createVehicleStatus(
+    static let fullBattery = createVehicleState(
         batteryLevel: 100,
         isCharging: false,
         drivingReady: true,
@@ -677,7 +677,7 @@ struct MockVehicleData {
     )
     
     /// Fast charging scenario - 67% battery, DC fast charging
-    static let fastCharging = createVehicleStatus(
+    static let fastCharging = createVehicleState(
         batteryLevel: 67,
         isCharging: true,
         drivingReady: false,
@@ -685,7 +685,7 @@ struct MockVehicleData {
     )
     
     /// Climate preconditioning - 82% battery, climate active
-    static let preconditioning = createVehicleStatus(
+    static let preconditioning = createVehicleState(
         batteryLevel: 82,
         isCharging: false,
         drivingReady: true,
@@ -693,7 +693,7 @@ struct MockVehicleData {
     )
     
     /// Maintenance mode - 58% battery, some systems offline
-    static let maintenance = createVehicleStatus(
+    static let maintenance = createVehicleState(
         batteryLevel: 58,
         isCharging: false,
         drivingReady: false,
@@ -701,7 +701,7 @@ struct MockVehicleData {
     )
     
     /// Low tire pressure demo - 73% battery, multiple tires with low pressure
-    static let lowTirePressure = createVehicleStatus(
+    static let lowTirePressure = createVehicleState(
         batteryLevel: 73,
         isCharging: false,
         drivingReady: true,
@@ -709,37 +709,37 @@ struct MockVehicleData {
     )
 }
 
-// MARK: - VehicleStatusResponse Mock Data
+// MARK: - VehicleStateResponse Mock Data
 
 extension MockVehicleData {
     
-    /// Create complete VehicleStatusResponse from JSON
-    private static func createVehicleStatusResponse(
-        vehicleStatus: VehicleStatus,
+    /// Create complete VehicleStateResponse from JSON
+    private static func createVehicleStateResponse(
+        VehicleState: VehicleState,
         resultCode: String = "0000"
-    ) -> VehicleStatusResponse {
+    ) -> VehicleStateResponse {
         // Create response with mock vehicle directly
-        let response = VehicleStatusResponse(
+        let response = VehicleStateResponse(
             resultCode: resultCode,
-            serviceNumber: "VehicleStatus", 
+            serviceNumber: "VehicleState", 
             returnCode: "S",
             lastUpdateTime: Date(),
-            state: VehicleStatusResponse.State(vehicle: vehicleStatus)
+            state: VehicleStateWrapper(vehicle: VehicleState)
         )
         return response
     }
     
-    /// Complete VehicleStatusResponse with standard scenario
-    static let standardResponse = createVehicleStatusResponse(vehicleStatus: standard)
+    /// Complete VehicleStateResponse with standard scenario
+    static let standardResponse = createVehicleStateResponse(VehicleState: standard)
     
-    /// Complete VehicleStatusResponse with charging scenario  
-    static let chargingResponse = createVehicleStatusResponse(vehicleStatus: charging)
+    /// Complete VehicleStateResponse with charging scenario  
+    static let chargingResponse = createVehicleStateResponse(VehicleState: charging)
     
-    /// Complete VehicleStatusResponse with low battery scenario
-    static let lowBatteryResponse = createVehicleStatusResponse(vehicleStatus: lowBattery)
+    /// Complete VehicleStateResponse with low battery scenario
+    static let lowBatteryResponse = createVehicleStateResponse(VehicleState: lowBattery)
     
-    /// Complete VehicleStatusResponse with low tire pressure scenario
-    static let lowTirePressureResponse = createVehicleStatusResponse(vehicleStatus: lowTirePressure)
+    /// Complete VehicleStateResponse with low tire pressure scenario
+    static let lowTirePressureResponse = createVehicleStateResponse(VehicleState: lowTirePressure)
 }
 
 // MARK: - Vehicle Mock Data
@@ -789,7 +789,7 @@ extension MockVehicleData {
 
 // MARK: - SwiftUI Preview Extensions
 
-extension VehicleStatus {
+extension VehicleState {
     /// Convenience properties for previews
     static let preview = MockVehicleData.standard
     static let chargingPreview = MockVehicleData.charging  
@@ -801,7 +801,7 @@ extension VehicleStatus {
     static let lowTirePressurePreview = MockVehicleData.lowTirePressure
 }
 
-extension VehicleStatusResponse {
+extension VehicleStateResponse {
     /// Convenience properties for previews
     static let preview = MockVehicleData.standardResponse
     static let chargingPreview = MockVehicleData.chargingResponse
@@ -818,18 +818,18 @@ extension Vehicle {
 
 extension MockVehicleData {
     
-    /// Extract battery percentage as Double (0.0 to 1.0) from VehicleStatus
-    static func batteryLevel(from vehicleStatus: VehicleStatus) -> Double {
-        return Double(vehicleStatus.green.batteryManagement.batteryRemain.ratio) / 100.0
+    /// Extract battery percentage as Double (0.0 to 1.0) from VehicleState
+    static func batteryLevel(from VehicleState: VehicleState) -> Double {
+        return Double(VehicleState.green.batteryManagement.batteryRemain.ratio) / 100.0
     }
     
     /// Check if vehicle is charging based on mock data logic
-    static func isCharging(_ vehicleStatus: VehicleStatus) -> Bool {
-        return (vehicleStatus.location?.heading ?? 0) > 0
+    static func isCharging(_ VehicleState: VehicleState) -> Bool {
+        return (VehicleState.location?.heading ?? 0) > 0
     }
     
     /// Get estimated range in kilometers
-    static func estimatedRange(from vehicleStatus: VehicleStatus) -> Int {
-        return Int(vehicleStatus.green.batteryManagement.batteryRemain.ratio * 4) // Rough calculation
+    static func estimatedRange(from VehicleState: VehicleState) -> Int {
+        return Int(VehicleState.green.batteryManagement.batteryRemain.ratio * 4) // Rough calculation
     }
 }

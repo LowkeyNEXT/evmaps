@@ -314,7 +314,7 @@ struct TemperatureDial: View {
 
 /// Complete climate control interface with temperature dial and additional controls
 struct ClimateControlView: View {
-    let vehicleStatus: VehicleStatus?
+    let vehicleState: VehicleState?
     let unit: TemperatureUnit
     
     @State private var targetTemperature: Double = 22
@@ -322,8 +322,8 @@ struct ClimateControlView: View {
     @State private var fanSpeed: Double = 3
     @State private var isAutoMode: Bool = true
     
-    init(vehicleStatus: VehicleStatus? = nil, unit: TemperatureUnit = .celsius) {
-        self.vehicleStatus = vehicleStatus
+    init(vehicleState: VehicleState? = nil, unit: TemperatureUnit = .celsius) {
+        self.vehicleState = vehicleState
         self.unit = unit
     }
     
@@ -421,16 +421,16 @@ struct ClimateControlView: View {
         }
         .animation(.spring(response: 0.5, dampingFraction: 0.8), value: isClimateOn)
         .onAppear {
-            initializeFromVehicleStatus()
+            initializeFromVehicleState()
         }
     }
     
     // MARK: - Private Methods
     
-    private func initializeFromVehicleStatus() {
-        guard let vehicleStatus = vehicleStatus else { return }
+    private func initializeFromVehicleState() {
+        guard let vehicleState = vehicleState else { return }
         
-        let hvac = vehicleStatus.cabin.hvac
+        let hvac = vehicleState.cabin.hvac
         
         // Set fan speed from API
         let apiFanSpeed = hvac.row1.driver.blower.speedLevel

@@ -16,16 +16,16 @@ final class UIComponentMockDataTests: XCTestCase {
     
     func testCircularBatteryViewWithMockData() {
         // Test that CircularBatteryView can be created with mock data
-        let scenarios: [(String, VehicleStatus)] = [
+        let scenarios: [(String, VehicleState)] = [
             ("Standard", MockVehicleData.standard),
             ("Charging", MockVehicleData.charging),
             ("Low Battery", MockVehicleData.lowBattery),
             ("Full Battery", MockVehicleData.fullBattery)
         ]
         
-        for (name, vehicleStatus) in scenarios {
-            let batteryLevel = MockVehicleData.batteryLevel(from: vehicleStatus)
-            let isCharging = MockVehicleData.isCharging(vehicleStatus)
+        for (name, VehicleState) in scenarios {
+            let batteryLevel = MockVehicleData.batteryLevel(from: VehicleState)
+            let isCharging = MockVehicleData.isCharging(VehicleState)
             
             let view = CircularBatteryView(
                 level: batteryLevel,
@@ -77,16 +77,16 @@ final class UIComponentMockDataTests: XCTestCase {
             MockVehicleData.fullBattery
         ]
 
-        for (index, vehicleStatus) in scenarios.enumerated() {
-            let view = BatteryHeroView(from: vehicleStatus)
+        for (index, VehicleState) in scenarios.enumerated() {
+            let view = BatteryHeroView(from: VehicleState)
             
             // View should be created successfully
             XCTAssertNotNil(view)
             
             // Verify internal data extraction works
-            let batteryLevel = MockVehicleData.batteryLevel(from: vehicleStatus)
-            let isCharging = MockVehicleData.isCharging(vehicleStatus)
-            let estimatedRange = MockVehicleData.estimatedRange(from: vehicleStatus)
+            let batteryLevel = MockVehicleData.batteryLevel(from: VehicleState)
+            let isCharging = MockVehicleData.isCharging(VehicleState)
+            let estimatedRange = MockVehicleData.estimatedRange(from: VehicleState)
             
             XCTAssertGreaterThanOrEqual(batteryLevel, 0.0)
             XCTAssertLessThanOrEqual(batteryLevel, 1.0)
@@ -109,7 +109,7 @@ final class UIComponentMockDataTests: XCTestCase {
         var locateActionCalled = false
         
         let view = QuickActionsView(
-            vehicleStatus: MockVehicleData.standard,
+            VehicleState: MockVehicleData.standard,
             onLockAction: { lockActionCalled = true },
             onClimateAction: { climateActionCalled = true },
             onHornAction: { hornActionCalled = true },
@@ -126,16 +126,16 @@ final class UIComponentMockDataTests: XCTestCase {
         XCTAssertFalse(locateActionCalled)
     }
     
-    // MARK: - VehicleStatusModernView Tests
+    // MARK: - VehicleStateModernView Tests
     
-    func testVehicleStatusModernViewWithMockData() {
+    func testVehicleStateModernViewWithMockData() {
         let vehicle = MockVehicleData.mockVehicle
-        let vehicleStatus = MockVehicleData.standard
+        let VehicleState = MockVehicleData.standard
         let lastUpdateTime = Date().addingTimeInterval(-300)
         
-        let view = VehicleStatusModernView(
+        let view = VehicleStateModernView(
             vehicle: vehicle,
-            vehicleStatus: vehicleStatus,
+            VehicleState: VehicleState,
             lastUpdateTime: lastUpdateTime
         )
         
@@ -143,7 +143,7 @@ final class UIComponentMockDataTests: XCTestCase {
         XCTAssertNotNil(view)
     }
     
-    func testVehicleStatusModernViewWithAllScenarios() {
+    func testVehicleStateModernViewWithAllScenarios() {
         let vehicle = MockVehicleData.mockVehicle
         let lastUpdateTime = Date()
         
@@ -157,10 +157,10 @@ final class UIComponentMockDataTests: XCTestCase {
             MockVehicleData.maintenance
         ]
         
-        for vehicleStatus in scenarios {
-            let view = VehicleStatusModernView(
+        for VehicleState in scenarios {
+            let view = VehicleStateModernView(
                 vehicle: vehicle,
-                vehicleStatus: vehicleStatus,
+                VehicleState: VehicleState,
                 lastUpdateTime: lastUpdateTime
             )
             
@@ -171,16 +171,16 @@ final class UIComponentMockDataTests: XCTestCase {
     // MARK: - KiaProgressBar Tests
     
     func testKiaProgressBarWithMockBatteryLevels() {
-        let scenarios: [(String, VehicleStatus)] = [
+        let scenarios: [(String, VehicleState)] = [
             ("Standard", MockVehicleData.standard),
             ("Charging", MockVehicleData.charging),
             ("Low Battery", MockVehicleData.lowBattery),
             ("Full Battery", MockVehicleData.fullBattery)
         ]
         
-        for (name, vehicleStatus) in scenarios {
-            let batteryLevel = MockVehicleData.batteryLevel(from: vehicleStatus)
-            let isCharging = MockVehicleData.isCharging(vehicleStatus)
+        for (name, VehicleState) in scenarios {
+            let batteryLevel = MockVehicleData.batteryLevel(from: VehicleState)
+            let isCharging = MockVehicleData.isCharging(VehicleState)
             
             let progressBar = KiaProgressBar(
                 value: batteryLevel,
@@ -246,36 +246,36 @@ final class UIComponentMockDataTests: XCTestCase {
     // MARK: - VehicleSilhouetteView Tests
     
     func testVehicleSilhouetteViewWithMockData() {
-        let vehicleStatus = MockVehicleData.preconditioning
+        let VehicleState = MockVehicleData.preconditioning
         
-        let view = VehicleSilhouetteView(vehicleStatus: vehicleStatus)
+        let view = VehicleSilhouetteView(VehicleState: VehicleState)
         
         // View should be created successfully
         XCTAssertNotNil(view)
         
         // Verify vehicle status data can be accessed (HVAC has complex structure)
-        XCTAssertEqual(vehicleStatus.cabin.hvac.row1.driver.temperature.value, "22")
+        XCTAssertEqual(VehicleState.cabin.hvac.row1.driver.temperature.value, "22")
     }
     
     func testVehicleSilhouetteViewDoorStates() {
-        let vehicleStatus = MockVehicleData.standard
-        let view = VehicleSilhouetteView(vehicleStatus: vehicleStatus)
+        let VehicleState = MockVehicleData.standard
+        let view = VehicleSilhouetteView(VehicleState: VehicleState)
         
         XCTAssertNotNil(view)
         
         // All doors should be closed and locked
-        XCTAssertFalse(vehicleStatus.cabin.door.row1.driver.open)
-        XCTAssertFalse(vehicleStatus.cabin.door.row1.passenger.open)
-        XCTAssertFalse(vehicleStatus.cabin.door.row2.left.open)
-        XCTAssertFalse(vehicleStatus.cabin.door.row2.right.open)
+        XCTAssertFalse(VehicleState.cabin.door.row1.driver.open)
+        XCTAssertFalse(VehicleState.cabin.door.row1.passenger.open)
+        XCTAssertFalse(VehicleState.cabin.door.row2.left.open)
+        XCTAssertFalse(VehicleState.cabin.door.row2.right.open)
     }
     
     // MARK: - Integration Tests
     
     func testMockDataConsistencyAcrossComponents() {
-        let vehicleStatus = MockVehicleData.charging
-        let batteryLevel = MockVehicleData.batteryLevel(from: vehicleStatus)
-        let isCharging = MockVehicleData.isCharging(vehicleStatus)
+        let VehicleState = MockVehicleData.charging
+        let batteryLevel = MockVehicleData.batteryLevel(from: VehicleState)
+        let isCharging = MockVehicleData.isCharging(VehicleState)
         
         // Create multiple components with the same data
         let circularBattery = CircularBatteryView(
@@ -283,7 +283,7 @@ final class UIComponentMockDataTests: XCTestCase {
             isCharging: isCharging
         )
         
-        let batteryHero = BatteryHeroView(from: vehicleStatus)
+        let batteryHero = BatteryHeroView(from: VehicleState)
         
         let progressBar = KiaProgressBar(
             value: batteryLevel,
@@ -325,29 +325,29 @@ final class UIComponentMockDataTests: XCTestCase {
     // MARK: - Performance Tests
     
     func testUIComponentCreationPerformance() {
-        let vehicleStatus = MockVehicleData.standard
+        let VehicleState = MockVehicleData.standard
         let vehicle = MockVehicleData.mockVehicle
         
         measure {
             // Measure performance of creating UI components
             _ = CircularBatteryView(
-                level: MockVehicleData.batteryLevel(from: vehicleStatus),
-                isCharging: MockVehicleData.isCharging(vehicleStatus)
+                level: MockVehicleData.batteryLevel(from: VehicleState),
+                isCharging: MockVehicleData.isCharging(VehicleState)
             )
             
-            _ = BatteryHeroView(from: vehicleStatus)
+            _ = BatteryHeroView(from: VehicleState)
             
             _ = QuickActionsView(
-                vehicleStatus: vehicleStatus,
+                VehicleState: VehicleState,
                 onLockAction: {},
                 onClimateAction: {},
                 onHornAction: {},
                 onLocateAction: {}
             )
             
-            _ = VehicleStatusModernView(
+            _ = VehicleStateModernView(
                 vehicle: vehicle,
-                vehicleStatus: vehicleStatus,
+                VehicleState: VehicleState,
                 lastUpdateTime: Date()
             )
         }

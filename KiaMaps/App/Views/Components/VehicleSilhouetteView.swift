@@ -10,7 +10,7 @@ import SwiftUI
 
 /// Interactive vehicle silhouette showing doors, windows, and status indicators
 struct VehicleSilhouetteView: View {
-    let vehicleStatus: VehicleStatus
+    let vehicleState: VehicleState
     let onDoorTap: ((DoorPosition) -> Void)?
     let onTireTap: ((TirePosition) -> Void)?
     let onChargingPortTap: (() -> Void)?
@@ -90,13 +90,13 @@ struct VehicleSilhouetteView: View {
     }
     
     init(
-        vehicleStatus: VehicleStatus,
+        vehicleState: VehicleState,
         onDoorTap: ((DoorPosition) -> Void)? = nil,
         onTireTap: ((TirePosition) -> Void)? = nil,
         onChargingPortTap: (() -> Void)? = nil,
         onVehicleTap: (() -> Void)? = nil
     ) {
-        self.vehicleStatus = vehicleStatus
+        self.vehicleState = vehicleState
         self.onDoorTap = onDoorTap
         self.onTireTap = onTireTap
         self.onChargingPortTap = onChargingPortTap
@@ -196,7 +196,7 @@ struct VehicleSilhouetteView: View {
     private func doorIndicator(for door: DoorPosition) -> some View {
         let isOpen = isDoorOpen(door)
         let isLocked = isDoorLocked(door)
-        let hasFault = door == .frunk && vehicleStatus.hasFrunkFault(door)
+        let hasFault = door == .frunk && vehicleState.hasFrunkFault(door)
         let position = doorPosition(for: door)
         
         // Determine door color based on state
@@ -403,8 +403,8 @@ struct VehicleSilhouetteView: View {
     
     private var vehicleBodyColor: Color {
         // Use battery level to subtly influence vehicle color
-        let batteryLevel = Double(vehicleStatus.green.batteryManagement.batteryRemain.ratio) / 100.0
-        
+        let batteryLevel = Double(vehicleState.green.batteryManagement.batteryRemain.ratio) / 100.0
+
         if batteryLevel < 0.2 {
             return KiaDesign.Colors.textTertiary.opacity(0.7)
         } else if isCharging {
@@ -416,20 +416,20 @@ struct VehicleSilhouetteView: View {
     
     private var isCharging: Bool {
         // Use real charging status from API
-        vehicleStatus.isCharging
+        vehicleState.isCharging
     }
     
     private var activeWarnings: [WarningType] {
         var warnings: [WarningType] = []
         
         // Check battery level
-        let batteryLevel = Double(vehicleStatus.green.batteryManagement.batteryRemain.ratio) / 100.0
+        let batteryLevel = Double(vehicleState.green.batteryManagement.batteryRemain.ratio) / 100.0
         if batteryLevel < 0.2 {
             warnings.append(.lowBattery)
         }
         
         // Check battery health
-        let batteryHealth = Double(vehicleStatus.green.batteryManagement.soH.ratio) / 100.0
+        let batteryHealth = Double(vehicleState.green.batteryManagement.soH.ratio) / 100.0
         if batteryHealth < 0.8 {
             warnings.append(.batteryHealth)
         }
@@ -443,7 +443,7 @@ struct VehicleSilhouetteView: View {
         }
         
         // Check for maintenance needs (using mock logic - park position and full battery)
-        if vehicleStatus.drivetrain.transmission.parkingPosition && batteryLevel > 0.9 {
+        if vehicleState.drivetrain.transmission.parkingPosition && batteryLevel > 0.9 {
             warnings.append(.maintenanceRequired)
         }
         
@@ -506,16 +506,16 @@ struct VehicleSilhouetteView: View {
     // MARK: - Status Methods
     
     private func isDoorOpen(_ door: DoorPosition) -> Bool {
-        return vehicleStatus.isDoorOpen(door)
+        return vehicleState.isDoorOpen(door)
     }
     
     private func isDoorLocked(_ door: DoorPosition) -> Bool {
-        return vehicleStatus.isDoorLocked(door)
+        return vehicleState.isDoorLocked(door)
     }
     
     private func tirePressure(for tire: TirePosition) -> Double {
         // Get real tire pressure values from API
-        let chassis = vehicleStatus.chassis
+        let chassis = vehicleState.chassis
         switch tire {
         case .frontLeft: 
             return Double(chassis.axle.row1.left.tire.pressure)
@@ -530,7 +530,7 @@ struct VehicleSilhouetteView: View {
     
     private func isTirePressureLow(for tire: TirePosition) -> Bool {
         // Check if tire pressure is low from API
-        let chassis = vehicleStatus.chassis
+        let chassis = vehicleState.chassis
         switch tire {
         case .frontLeft:
             return chassis.axle.row1.left.tire.pressureLow
@@ -565,8 +565,8 @@ struct VehicleSilhouetteView: View {
 // MARK: - Status Detail View
 
 /// Expandable detail view showing comprehensive vehicle status
-struct VehicleStatusDetailView: View {
-    let vehicleStatus: VehicleStatus
+struct VehicleStateDetailView: View {
+    let vehicleState: VehicleState
     let selectedElement: VehicleSilhouetteView.InteractiveElement?
     
     var body: some View {
@@ -601,9 +601,9 @@ struct VehicleStatusDetailView: View {
     }
     
     private func doorDetailView(for door: VehicleSilhouetteView.DoorPosition) -> some View {
-        let isOpen = vehicleStatus.isDoorOpen(door)
-        let isLocked = vehicleStatus.isDoorLocked(door)
-        let hasFault = door == .frunk && vehicleStatus.hasFrunkFault(door)
+        let isOpen = vehicleState.isDoorOpen(door)
+        let isLocked = vehicleState.isDoorLocked(door)
+        let hasFault = door == .frunk && vehicleState.hasFrunkFault(door)
         
         // Determine status text and color based on door type
         let (statusText, statusColor, statusIndicator): (String, Color, KiaStatusIndicator.Status) = {
@@ -864,7 +864,7 @@ struct VehicleStatusDetailView: View {
     // MARK: - Tire Pressure Helpers
     
     private func getTirePressure(for tire: VehicleSilhouetteView.TirePosition) -> Double {
-        let chassis = vehicleStatus.chassis
+        let chassis = vehicleState.chassis
         switch tire {
         case .frontLeft:
             return Double(chassis.axle.row1.left.tire.pressure)
@@ -878,7 +878,7 @@ struct VehicleStatusDetailView: View {
     }
     
     private func getTirePressureStatus(for tire: VehicleSilhouetteView.TirePosition) -> KiaStatusIndicator.Status {
-        let chassis = vehicleStatus.chassis
+        let chassis = vehicleState.chassis
         let isLow: Bool
         
         switch tire {
@@ -897,7 +897,7 @@ struct VehicleStatusDetailView: View {
     
     private func getPressureUnit() -> String {
         // Get pressure unit from API (0 = PSI, 1 = kPa, 2 = bar)
-        let unit = vehicleStatus.chassis.axle.tire.pressureUnit
+        let unit = vehicleState.chassis.axle.tire.pressureUnit
         switch unit {
         case 0: return "PSI"
         case 1: return "kPa"
@@ -910,7 +910,7 @@ struct VehicleStatusDetailView: View {
     
     private func getChargingPower() -> String {
         // Get real-time charging power from API
-        let power = vehicleStatus.green.electric.smartGrid.realTimePower
+        let power = vehicleState.green.electric.smartGrid.realTimePower
         
         if power > 0 {
             if power >= 1.0 {
@@ -925,8 +925,8 @@ struct VehicleStatusDetailView: View {
     
     private func getChargingRemainingTime() -> String {
         // Get remaining charging time from API
-        let remainTime = vehicleStatus.green.chargingInformation.charging.remainTime
-        let unit = vehicleStatus.green.chargingInformation.charging.remainTimeUnit
+        let remainTime = vehicleState.green.chargingInformation.charging.remainTime
+        let unit = vehicleState.green.chargingInformation.charging.remainTimeUnit
         
         if remainTime > 0 {
             let hours = Int(remainTime / 60)
@@ -974,7 +974,7 @@ struct VehicleStatusDetailView: View {
     
     private func getChargingCurrentLevel() -> String {
         // Get charging current level from API (AC/DC indicator)
-        let currentLevel = vehicleStatus.green.chargingInformation.electricCurrentLevel.state
+        let currentLevel = vehicleState.green.chargingInformation.electricCurrentLevel.state
         
         switch currentLevel {
         case 0:
@@ -993,8 +993,8 @@ struct VehicleStatusDetailView: View {
 
 /// Container view combining silhouette with expandable details
 struct InteractiveVehicleSilhouetteView: View {
-    let vehicleStatus: VehicleStatus
-    
+    let vehicleState: VehicleState
+
     @State private var selectedElement: VehicleSilhouetteView.InteractiveElement?
     @State private var showingDetails = false
     
@@ -1002,7 +1002,7 @@ struct InteractiveVehicleSilhouetteView: View {
         VStack(spacing: KiaDesign.Spacing.medium) {
             // Silhouette
             VehicleSilhouetteView(
-                vehicleStatus: vehicleStatus,
+                vehicleState: vehicleState,
                 onDoorTap: { door in
                     withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
                         if selectedElement == .door(door) && showingDetails {
@@ -1060,8 +1060,8 @@ struct InteractiveVehicleSilhouetteView: View {
             
             // Details (if selected)
             if showingDetails {
-                VehicleStatusDetailView(
-                    vehicleStatus: vehicleStatus,
+                VehicleStateDetailView(
+                    vehicleState: vehicleState,
                     selectedElement: selectedElement
                 )
                 .onTapGesture {
@@ -1093,7 +1093,7 @@ struct InteractiveVehicleSilhouetteView: View {
             Text("Standard Scenario")
                 .font(KiaDesign.Typography.title2)
             
-            VehicleSilhouetteView(vehicleStatus: MockVehicleData.standard)
+            VehicleSilhouetteView(vehicleState: MockVehicleData.standard)
             
             Divider()
             
@@ -1101,7 +1101,7 @@ struct InteractiveVehicleSilhouetteView: View {
             Text("Charging Scenario (AC)")
                 .font(KiaDesign.Typography.title2)
             
-            InteractiveVehicleSilhouetteView(vehicleStatus: MockVehicleData.charging)
+            InteractiveVehicleSilhouetteView(vehicleState: MockVehicleData.charging)
             
             Divider()
             
@@ -1109,7 +1109,7 @@ struct InteractiveVehicleSilhouetteView: View {
             Text("Fast Charging Scenario (DC)")
                 .font(KiaDesign.Typography.title2)
             
-            InteractiveVehicleSilhouetteView(vehicleStatus: MockVehicleData.fastCharging)
+            InteractiveVehicleSilhouetteView(vehicleState: MockVehicleData.fastCharging)
             
             Divider()
             
@@ -1117,16 +1117,16 @@ struct InteractiveVehicleSilhouetteView: View {
             Text("Low Tire Pressure Demo")
                 .font(KiaDesign.Typography.title2)
             
-            InteractiveVehicleSilhouetteView(vehicleStatus: MockVehicleData.lowTirePressure)
+            InteractiveVehicleSilhouetteView(vehicleState: MockVehicleData.lowTirePressure)
         }
         .padding()
     }
     .background(KiaDesign.Colors.background)
 }
 
-// MARK: - VehicleStatus Extensions
+// MARK: - VehicleState Extensions
 
-extension VehicleStatus {
+extension VehicleState {
     func isDoorOpen(_ door: VehicleSilhouetteView.DoorPosition) -> Bool {
         let doors = cabin.door
         switch door {

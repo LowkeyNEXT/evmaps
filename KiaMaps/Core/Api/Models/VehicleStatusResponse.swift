@@ -1,5 +1,5 @@
 //
-//  VehicleStatusResponse.swift
+//  VehicleStateResponse.swift
 //  KiaMaps
 //
 //  Created by Lukas Foldyna on 01.06.2024.
@@ -9,7 +9,19 @@
 import Foundation
 import CoreLocation
 
-// MARK: - VehicleStatusResponse
+// MARK: - VehicleStateWrapper
+
+/// Wrapper for the main vehicle status data
+struct VehicleStateWrapper: Codable {
+    /// The detailed vehicle status information
+    let vehicle: VehicleState
+
+    enum CodingKeys: String, CodingKey {
+        case vehicle = "Vehicle"
+    }
+}
+
+// MARK: - VehicleStateResponse
 
 /// Represents the complete vehicle status response from the API, containing detailed information
 /// about the vehicle's current state including location, battery, climate, doors, and more.
@@ -42,11 +54,11 @@ import CoreLocation
 ///
 /// ## Usage
 /// ```swift
-/// let response = try JSONDecoder().decode(VehicleStatusResponse.self, from: data)
+/// let response = try JSONDecoder().decode(VehicleStateResponse.self, from: data)
 /// let batteryLevel = response.state.vehicle.green.batteryManagement.batteryRemain.ratio
 /// let isCharging = response.state.vehicle.isCharging
 /// ```
-struct VehicleStatusResponse: Codable {
+struct VehicleStateResponse: Codable {
     /// API result code indicating success/failure ("S" for success)
     let resultCode: String
     
@@ -60,17 +72,7 @@ struct VehicleStatusResponse: Codable {
     @DateValue<TimeIntervalDateFormatter> private(set) var lastUpdateTime: Date
     
     /// The complete vehicle state information
-    let state: State
-
-    /// Wrapper for the main vehicle status data
-    struct State: Codable {
-        /// The detailed vehicle status information
-        let vehicle: VehicleStatus
-
-        enum CodingKeys: String, CodingKey {
-            case vehicle = "Vehicle"
-        }
-    }
+    let state: VehicleStateWrapper
 
     enum CodingKeys: String, CodingKey {
         case resultCode = "resCode"
@@ -82,22 +84,11 @@ struct VehicleStatusResponse: Codable {
 }
 
 struct VehicleMQTTStatusResponse: Codable {
-
     /// Timestamp of when the vehicle status was last updated
-    @DateValue<TimeIntervalDateFormatter> private(set) var lastUpdateTime: Date
+    @DateValue<MergedDateFormatter> private(set) var lastUpdateTime: Date
 
     /// The complete vehicle state information
-    let state: State
-
-    /// Wrapper for the main vehicle status data
-    struct State: Codable {
-        /// The detailed vehicle status information
-        let vehicle: VehicleStatus
-
-        enum CodingKeys: String, CodingKey {
-            case vehicle = "Vehicle"
-        }
-    }
+    let state: VehicleStateWrapper
 
     enum CodingKeys: String, CodingKey {
         case lastUpdateTime = "latestUpdateTime"
@@ -105,12 +96,39 @@ struct VehicleMQTTStatusResponse: Codable {
     }
 }
 
-// MARK: - VehicleStatus
+struct VehicleMQTTLocationResponse: Codable {
+    /// Timestamp of when the vehicle status was last updated
+    @DateValue<MergedDateFormatter> private(set) var lastUpdateTime: Date
+
+    /// The complete vehicle state information
+    let state: State
+
+    struct State: Codable {
+        /// The detailed vehicle status information
+        let vehicle: VehicleState
+
+        enum CodingKeys: String, CodingKey {
+            case vehicle = "Vehicle"
+        }
+
+        struct VehicleState: Codable {
+            /// Vehicle GPS location and movement information
+            let location: VehicleLocation?
+
+            enum CodingKeys: String, CodingKey {
+                case location = "Location"
+            }
+        }
+    }
+
+}
+
+// MARK: - VehicleState
 
 /// Represents the complete vehicle status containing all subsystem information.
 /// This is the main data structure that holds real-time information about the vehicle's
 /// current state across all systems including location, body, cabin, chassis, and electric systems.
-struct VehicleStatus: Codable {
+struct VehicleState: Codable {
     /// Vehicle body status including doors, lights, hood, trunk, and windshield systems
     let body: VehicleBody
     
@@ -130,7 +148,7 @@ struct VehicleStatus: Codable {
     let green: VehicleGreen
     
     /// Connected car services status
-    let service: Service
+    let service: VehicleService
     
     /// Remote control capabilities and sleep mode status
     let remoteControl: RemoteControl
@@ -151,7 +169,7 @@ struct VehicleStatus: Codable {
     let offset: String
     
     /// Vehicle GPS location and movement information
-    let location: Location?
+    let location: VehicleLocation?
 
     /// Computed property that determines if the vehicle is currently charging
     /// Returns true if both the charging connector is fastened and the charging door is open
@@ -940,25 +958,25 @@ struct VehicleGreen: Codable {
     let batteryManagement: VehicleBatteryManagement
     
     /// Smart grid and vehicle-to-load/grid capabilities
-    let electric: Electric
+    let electric: VehicleElectric
     
     /// Charging status, times, and connector information
     let chargingInformation: VehicleChargingInformation
     
     /// Charging and climate scheduling reservations
-    let reservation: Reservation
+    let reservation: VehicleReservation
     
     /// Energy consumption and distance-to-empty information
-    let energyInformation: EnergyInformation
+    let energyInformation: VehicleEnergyInformation
     
     /// Charging port door status and error information
     let chargingDoor: ChargingDoor
     
     /// Plug & Charge authentication and contract information
-    let plugAndCharge: PlugAndCharge
+    let plugAndCharge: VehiclePlugAndCharge
     
     /// Historical driving efficiency data
-    let drivingHistory: DrivingHistory
+    let drivingHistory: VehicleDrivingHistory
     
     /// Charging port door status and diagnostics
     struct ChargingDoor: Codable {
@@ -1147,7 +1165,7 @@ struct VehicleChargingInformation: Codable {
 
 // MARK: - DrivingHistory
 
-struct DrivingHistory: Codable {
+struct VehicleDrivingHistory: Codable {
     let average: Double
     let unit: DistanceUnit
 
@@ -1157,9 +1175,9 @@ struct DrivingHistory: Codable {
     }
 }
 
-// MARK: - Electric
+// MARK: - VehicleElectric
 
-struct Electric: Codable {
+struct VehicleElectric: Codable {
     let smartGrid: SmartGrid
 
     struct SmartGrid: Codable {
@@ -1205,9 +1223,9 @@ struct Electric: Codable {
     }
 }
 
-// MARK: - EnergyInformation
+// MARK: - VehicleEnergyInformation
 
-struct EnergyInformation: Codable {
+struct VehicleEnergyInformation: Codable {
     let dte: EnergyInformationDte
 
     struct EnergyInformationDte: Codable {
@@ -1223,9 +1241,9 @@ struct EnergyInformation: Codable {
     }
 }
 
-// MARK: - PlugAndCharge
+// MARK: - VehiclePlugAndCharge
 
-struct PlugAndCharge: Codable {
+struct VehiclePlugAndCharge: Codable {
     let contractCertificate1: ContractCertificate
     let contractCertificate2: ContractCertificate
     let contractCertificate3: ContractCertificate
@@ -1289,9 +1307,9 @@ struct VehiclePowerConsumption: Codable {
     }
 }
 
-// MARK: - Reservation
+// MARK: - VehicleReservation
 
-struct Reservation: Codable {
+struct VehicleReservation: Codable {
     let departure: Departure
     let offPeakTime1: OffPeakTime
     let offPeakTime2: OffPeakTime
@@ -1393,11 +1411,11 @@ struct Reservation: Codable {
     }
 }
 
-// MARK: - Location
+// MARK: - VehicleLocation
 
 /// Vehicle GPS location and movement information.
 /// Contains precise positioning data, movement direction, speed, and timestamp information.
-struct Location: Codable {
+struct VehicleLocation: Codable {
     /// Date and time when this location was recorded
     @DateValue<TimeIntervalDateFormatter> private(set) var date: Date
     
@@ -1525,9 +1543,9 @@ struct Location: Codable {
     }
 }
 
-// MARK: - Service
+// MARK: - VehicleService
 
-struct Service: Codable {
+struct VehicleService: Codable {
     let connectedCar: ConnectedCar
 
     struct ConnectedCar: Codable {

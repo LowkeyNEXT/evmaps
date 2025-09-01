@@ -24,6 +24,15 @@ enum MQTTConnectionStatus {
         case .error: return "Error"
         }
     }
+    
+    var displayText: String {
+        switch self {
+        case .disconnected: return "Disconnected"
+        case .connecting: return "Connecting to vehicle..."
+        case .connected: return "Connected - receiving live data"
+        case .error: return "Connection failed"
+        }
+    }
 }
 
 struct MQTTHostInfo {
@@ -122,8 +131,8 @@ enum MQTTCloseRemoteProtocolIds: String, MQTTProtocol {
     case hvacPrecondition = "device.closeremote.precondition"
     case hvacRemoteReq = "vehicle.closeremote.remote.req"
     case hvacRemoteRes = "device.closeremote.remote.res"
-    case hvacVehicleStatusReq = "vehicle.closeremote.vehiclestatus.req"
-    case hvacVehicleStatus = "device.closeremote.vehiclestatus"
+    case hvacVehicleStateReq = "vehicle.closeremote.vehiclestatus.req"
+    case hvacVehicleState = "device.closeremote.vehiclestatus"
     case hvacConnectionStatusReq = "vehicle.closeremote.connectionstatus.req"
     case hvacConnectionStatusRes = "device.closeremote.connectionstatus.res"
     case hvacMediaStatus = "device.closeremote.media.vehiclestatus"
@@ -169,7 +178,7 @@ struct VehicleMetadataResponse: Decodable {
 struct ProtocolSubscriptionRequest: Encodable {
     let protocols: [any MQTTProtocol]
     let protocolId: any MQTTProtocol
-    let carId: String
+    let carId: UUID
     let brand: String
 
     enum CodingKeys: String, CodingKey {
