@@ -132,7 +132,7 @@ class GetCarPowerLevelStatusHandler: NSObject, INGetCarPowerLevelStatusIntentHan
                 manager.removeLastUpdateDate()
             }
 
-            logDebug("Handler: Use cached data", category: .vehicle)
+            return cachedData.state.toIntentResponse(carId: carId, vehicleParameters: vehicleParameters, lastUpdateDate: cachedData.lastUpdateTime)
             return cachedData.state.toIntentResponse(carId: carId, vehicleParameters: vehicleParameters, lastUpdateDate: .now - 1 * 60)
         } else {
             // Get data from server
