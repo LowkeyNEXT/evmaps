@@ -1,7 +1,6 @@
 import SwiftUI
 import UIKit
 import BackgroundTasks
-import os.log
 
 class AppDelegate: NSObject, UIApplicationDelegate {
     var localClient: LocalCredentialClient! = nil

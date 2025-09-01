@@ -7,7 +7,6 @@
 //
 
 import Foundation
-import os.log
 
 /// Extension to Api class that handles automatic token refresh and retry logic
 extension Api {
