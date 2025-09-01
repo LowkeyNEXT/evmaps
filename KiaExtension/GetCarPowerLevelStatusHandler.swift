@@ -69,7 +69,7 @@ class GetCarPowerLevelStatusHandler: NSObject, INGetCarPowerLevelStatusIntentHan
             } else {
                 try manager.store(status: status)
             }
-            result = status.state.toIntentResponse(carId: carId, vehicleParameters: vehicleParameters, lastUpdateDate: .now - 1 * 60)
+            result = status.state.toIntentResponse(carId: carId, vehicleParameters: vehicleParameters, lastUpdateDate: status.lastUpdateTime)
             logDebug("Loaded car status '\(status.state.vehicle.green.batteryManagement.batteryRemain.ratio)'", category: .vehicle)
         } catch {
             if let error = error as? ApiError {
@@ -77,7 +77,7 @@ class GetCarPowerLevelStatusHandler: NSObject, INGetCarPowerLevelStatusIntentHan
                 case .unauthorized:
                     logError("Unauthorized after retry (Status code 401)", category: .auth)
                     result = .init(code: .failureRequiringAppLaunch, userActivity: nil)
-            result = status.state.toIntentResponse(carId: carId, vehicleParameters: vehicleParameters, lastUpdateDate: status.lastUpdateTime)
+                case .unexpectedStatusCode(400):
                     logError("We probably reached call limit (Status code 400)", category: .api)
                     result = .init(code: .success, userActivity: nil)
                 default:
@@ -92,7 +92,7 @@ class GetCarPowerLevelStatusHandler: NSObject, INGetCarPowerLevelStatusIntentHan
             logDebug("Returning cached data for failure", category: .vehicle)
             manager.restoreOutdatedData()
             if let cachedData = try? manager.vehicleState {
-                return cachedData.state.toIntentResponse(carId: carId, vehicleParameters: vehicleParameters, lastUpdateDate: .now - 1 * 60)
+                return cachedData.state.toIntentResponse(carId: carId, vehicleParameters: vehicleParameters, lastUpdateDate: cachedData.lastUpdateTime)
             } else {
                 logDebug("No cached data, returning failure", category: .vehicle)
                 manager.removeLastUpdateDate()
@@ -132,8 +132,8 @@ class GetCarPowerLevelStatusHandler: NSObject, INGetCarPowerLevelStatusIntentHan
                 manager.removeLastUpdateDate()
             }
 
+            logDebug("Handler: Use cached data", category: .vehicle)
             return cachedData.state.toIntentResponse(carId: carId, vehicleParameters: vehicleParameters, lastUpdateDate: cachedData.lastUpdateTime)
-            return cachedData.state.toIntentResponse(carId: carId, vehicleParameters: vehicleParameters, lastUpdateDate: .now - 1 * 60)
         } else {
             // Get data from server
             await credentialsHandler.continueOrWaitForCredentials()

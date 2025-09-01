@@ -117,6 +117,7 @@ enum ChargerPlugType: Int, Codable {
 }
 
 enum ChargeDoorStatus: Int, Codable {
+    case unknown = 0
     case open = 1
     case closed = 2
 }
