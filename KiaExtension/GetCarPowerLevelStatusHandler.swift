@@ -77,7 +77,7 @@ class GetCarPowerLevelStatusHandler: NSObject, INGetCarPowerLevelStatusIntentHan
                 case .unauthorized:
                     logError("Unauthorized after retry (Status code 401)", category: .auth)
                     result = .init(code: .failureRequiringAppLaunch, userActivity: nil)
-                case .unexpectedStatusCode(400):
+            result = status.state.toIntentResponse(carId: carId, vehicleParameters: vehicleParameters, lastUpdateDate: status.lastUpdateTime)
                     logError("We probably reached call limit (Status code 400)", category: .api)
                     result = .init(code: .success, userActivity: nil)
                 default:
