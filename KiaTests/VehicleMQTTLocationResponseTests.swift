@@ -27,8 +27,12 @@ final class VehicleMQTTLocationResponseTests: XCTestCase {
         let response = try JSONDecoder().decode(VehicleMQTTLocationResponse.self, from: data)
         XCTAssertNil(response.state.vehicle.location)
 
+        guard let utcTimeZone = TimeZone(secondsFromGMT: 0) else {
+            XCTFail("Failed to create UTC timezone")
+            return
+        }
         var utc = Calendar(identifier: .gregorian)
-        utc.timeZone = TimeZone(secondsFromGMT: 0)!
+        utc.timeZone = utcTimeZone
         let components = utc.dateComponents(
             [.year, .month, .day, .hour, .minute, .second],
             from: response.lastUpdateTime
@@ -56,15 +60,24 @@ final class VehicleMQTTLocationResponseTests: XCTestCase {
             """.utf8
         )
 
-        XCTAssertThrowsError(try JSONDecoder().decode(VehicleMQTTLocationResponse.self, from: data))
+        XCTAssertThrowsError(try JSONDecoder().decode(VehicleMQTTLocationResponse.self, from: data)) { error in
+            guard let parsingError = error as? DateValue<MergedDateFormatter>.ParsingError else {
+                XCTFail("Unexpected error type: \(type(of: error))")
+                return
+            }
+
+            switch parsingError {
+            case .invalidString(let invalidValue, _):
+                XCTAssertEqual(invalidValue, "2025-09-01T14:27:33Z")
+            }
+        }
     }
 
     func testMergedDateFormatter_RoundTrip() {
         let formatter = MergedDateFormatter()
         let source = "20241231235958"
 
-        let date = formatter.date(from: source)
-        XCTAssertNotNil(date)
-        XCTAssertEqual(formatter.string(from: date!), source)
+        let date = try XCTUnwrap(formatter.date(from: source))
+        XCTAssertEqual(formatter.string(from: date), source)
     }
 }
