@@ -326,6 +326,10 @@ enum PorscheApiConfiguration: String, ApiConfiguration {
         "XhygisuebbrqQ80byOuU5VncxLIm8E6H"
     }
 
+    var xClientId: String {
+        "41843fb4-691d-4970-85c7-2673e8ecef40"
+    }
+
     var cfb: String {
         // No HMG-style stamp for Porsche.
         "cG9yc2NoZS1tb2NrLWNmYi10b2tlbi0xMjM0NTY3ODkwMTIzNA=="
@@ -361,11 +365,27 @@ enum PorscheApiConfiguration: String, ApiConfiguration {
             "profile",
             "email",
             "offline_access",
+            "mbb",
+            "ssodb",
+            "badge",
+            "vin",
+            "dealers",
             "cars",
             "charging",
             "manageCharging",
+            "plugAndCharge",
             "climatisation",
             "manageClimatisation",
+            "pid:user_profile.porscheid:read",
+            "pid:user_profile.name:read",
+            "pid:user_profile.vehicles:read",
+            "pid:user_profile.dealers:read",
+            "pid:user_profile.emails:read",
+            "pid:user_profile.phones:read",
+            "pid:user_profile.addresses:read",
+            "pid:user_profile.birthdate:read",
+            "pid:user_profile.locale:read",
+            "pid:user_profile.legal:read",
         ].joined(separator: " ")
     }
 

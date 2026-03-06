@@ -64,65 +64,273 @@ final class HMGVehicleApiProvider: VehicleApiProvider {
 }
 
 final class PorscheVehicleApiProvider: VehicleApiProvider {
-    private let api: Api
+    private unowned let api: Api
+    private let transport: PorscheHTTPTransport
+    private let authClient: PorscheAuthClient
+    private let commandPollIntervalNanoseconds: UInt64
+    private var vinByVehicleID: [UUID: String] = [:]
 
-    init(api: Api) {
+    init(
+        api: Api,
+        transport: PorscheHTTPTransport? = nil,
+        authClient: PorscheAuthClient? = nil,
+        commandPollIntervalNanoseconds: UInt64 = 1_000_000_000
+    ) {
         self.api = api
+        let resolvedTransport = transport ?? PorscheAuthClient.makeDefaultTransport()
+        self.transport = resolvedTransport
+        self.commandPollIntervalNanoseconds = commandPollIntervalNanoseconds
+        if let authClient {
+            self.authClient = authClient
+        } else {
+            self.authClient = PorscheAuthClient(configuration: Self.configuration(for: api), transport: resolvedTransport)
+        }
     }
 
     func webLoginUrl() throws -> URL? {
-        guard let porscheConfiguration = api.configuration as? PorscheApiConfiguration else {
-            throw ApiError.unexpectedStatusCode(nil)
-        }
-        guard var components = URLComponents(string: "https://identity.porsche.com/authorize") else {
-            throw ApiError.unexpectedStatusCode(nil)
-        }
-        components.queryItems = [
-            .init(name: "response_type", value: "code"),
-            .init(name: "client_id", value: porscheConfiguration.authClientId),
-            .init(name: "redirect_uri", value: porscheConfiguration.redirectUri),
-            .init(name: "audience", value: porscheConfiguration.audience),
-            .init(name: "scope", value: porscheConfiguration.scope),
-            .init(name: "state", value: UUID().uuidString),
-            .init(name: "ui_locales", value: porscheConfiguration.locale),
-        ]
-        return components.url
+        try authClient.makeAuthorizeURL()
     }
 
-    func login(username _: String, password _: String, recaptchaToken _: String?) async throws -> AuthorizationData {
-        throw ApiError.unexpectedStatusCode(nil)
+    func login(username: String, password: String, recaptchaToken _: String?) async throws -> AuthorizationData {
+        let tokenSet = try await authClient.authenticate(username: username, password: password)
+        let authorization = authorizationData(from: tokenSet, existing: api.authorization)
+        api.authorization = authorization
+        return authorization
     }
 
-    func login(authorizationCode _: String) async throws -> AuthorizationData {
-        throw ApiError.unexpectedStatusCode(nil)
+    func login(authorizationCode: String) async throws -> AuthorizationData {
+        let tokenSet = try await authClient.exchangeAuthorizationCode(authorizationCode)
+        let authorization = authorizationData(from: tokenSet, existing: api.authorization)
+        api.authorization = authorization
+        return authorization
     }
 
     func logout() async throws {
         api.authorization = nil
+        vinByVehicleID.removeAll()
     }
 
     func vehicles() async throws -> VehicleResponse {
-        throw ApiError.unexpectedStatusCode(nil)
+        let payload = try await authorizedJSONObject(endpoint: .vehicles)
+        guard let vehiclesPayload = payload as? [PorscheVehicleMapper.JSONObject] else {
+            throw PorscheApiError.decodingFailed("vehicle list payload")
+        }
+        let response = try PorscheVehicleMapper.mapVehicles(from: vehiclesPayload)
+        vinByVehicleID = Dictionary(uniqueKeysWithValues: response.vehicles.map { ($0.vehicleId, $0.vin) })
+        return response
     }
 
-    func refreshVehicle(_: UUID) async throws -> UUID {
-        throw ApiError.unexpectedStatusCode(nil)
+    func refreshVehicle(_ vehicleId: UUID) async throws -> UUID {
+        let vin = try await resolveVIN(for: vehicleId)
+        _ = try await authorizedJSONObject(
+            endpoint: .vehicle(vin),
+            queryItems: measurementQueryItems(wakeUp: true)
+        )
+        return vehicleId
     }
 
-    func vehicleCachedStatus(_: UUID) async throws -> VehicleStateResponse {
-        throw ApiError.unexpectedStatusCode(nil)
+    func vehicleCachedStatus(_ vehicleId: UUID) async throws -> VehicleStateResponse {
+        let vin = try await resolveVIN(for: vehicleId)
+        let payload = try await authorizedJSONObject(
+            endpoint: .vehicle(vin),
+            queryItems: measurementQueryItems(wakeUp: false)
+        )
+        guard let statusPayload = payload as? PorscheVehicleMapper.JSONObject else {
+            throw PorscheApiError.decodingFailed("vehicle status payload")
+        }
+        return try PorscheVehicleMapper.mapVehicleState(from: statusPayload)
     }
 
     func profile() async throws -> String {
-        throw ApiError.unexpectedStatusCode(nil)
+        let payload = try await authorizedJSONObject(endpoint: .profile)
+        let data = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+        return String(decoding: data, as: UTF8.self)
     }
 
-    func startClimate(_: UUID, options _: ClimateControlOptions, pin _: String) async throws -> UUID {
-        throw ApiError.unexpectedStatusCode(nil)
+    func startClimate(_ vehicleId: UUID, options: ClimateControlOptions, pin _: String) async throws -> UUID {
+        guard options.isValid else {
+            if !options.isTemperatureValid {
+                throw ClimateControlError.invalidTemperature(options.temperature)
+            }
+            if !options.areSeatLevelsValid {
+                throw ClimateControlError.invalidSeatLevel(-1)
+            }
+            throw ClimateControlError.invalidDuration(options.duration)
+        }
+        let vin = try await resolveVIN(for: vehicleId)
+        return try await sendCommand(.climateOn(vin: vin, temperatureC: Double(options.temperature)))
     }
 
-    func stopClimate(_: UUID) async throws -> UUID {
-        throw ApiError.unexpectedStatusCode(nil)
+    func stopClimate(_ vehicleId: UUID) async throws -> UUID {
+        let vin = try await resolveVIN(for: vehicleId)
+        return try await sendCommand(.climateOff(vin: vin))
+    }
+
+    private static func configuration(for api: Api) -> PorscheApiConfiguration {
+        guard let configuration = api.configuration as? PorscheApiConfiguration else {
+            fatalError("Porsche provider requires PorscheApiConfiguration")
+        }
+        return configuration
+    }
+
+    private var configuration: PorscheApiConfiguration {
+        Self.configuration(for: api)
+    }
+
+    private func authorizationData(from tokenSet: PorscheTokenSet, existing: AuthorizationData?) -> AuthorizationData {
+        AuthorizationData(
+            stamp: existing?.stamp ?? "porsche",
+            deviceId: existing?.deviceId ?? UUID(),
+            accessToken: tokenSet.accessToken,
+            expiresIn: tokenSet.expiresIn,
+            refreshToken: tokenSet.refreshToken,
+            isCcuCCS2Supported: true,
+            providerKind: "porsche",
+            tokenIssuer: configuration.loginHost,
+            tokenAudience: configuration.audience,
+            tokenScope: tokenSet.scope ?? configuration.scope
+        )
+    }
+
+    private func resolveVIN(for vehicleId: UUID) async throws -> String {
+        if let vin = vinByVehicleID[vehicleId] {
+            return vin
+        }
+        let vehicles = try await self.vehicles()
+        guard let vehicle = vehicles.vehicles.first(where: { $0.vehicleId == vehicleId }) else {
+            throw PorscheApiError.missingVehicle(vehicleId.uuidString)
+        }
+        return vehicle.vin
+    }
+
+    private func measurementQueryItems(wakeUp: Bool) -> [URLQueryItem] {
+        var items = PorscheMeasurementCatalog.overview.map { URLQueryItem(name: "mf", value: $0) }
+        if wakeUp {
+            items.append(URLQueryItem(name: "wakeUpJob", value: UUID().uuidString))
+        }
+        return items
+    }
+
+    private func authorizedJSONObject(
+        endpoint: PorscheApiEndpoint,
+        method: String = "GET",
+        queryItems: [URLQueryItem] = [],
+        body: Data? = nil,
+        retryOnUnauthorized: Bool = true
+    ) async throws -> Any {
+        guard let authorization = api.authorization else {
+            throw ApiError.unauthorized
+        }
+
+        let response = try await send(
+            endpoint: endpoint,
+            method: method,
+            queryItems: queryItems,
+            body: body,
+            accessToken: authorization.accessToken,
+            accept: [200, 202, 401]
+        )
+
+        if response.response.statusCode == 401 {
+            guard retryOnUnauthorized else {
+                throw ApiError.unauthorized
+            }
+            let refreshedTokens = try await authClient.refreshToken(authorization.refreshToken)
+            let refreshedAuthorization = authorizationData(from: refreshedTokens, existing: authorization)
+            api.authorization = refreshedAuthorization
+            return try await authorizedJSONObject(
+                endpoint: endpoint,
+                method: method,
+                queryItems: queryItems,
+                body: body,
+                retryOnUnauthorized: false
+            )
+        }
+
+        if response.data.isEmpty {
+            return [:]
+        }
+        return try JSONSerialization.jsonObject(with: response.data)
+    }
+
+    private func sendCommand(_ request: PorscheCommandRequest) async throws -> UUID {
+        let payload = try await authorizedJSONObject(
+            endpoint: .commands(request.vin),
+            method: "POST",
+            body: PorscheVehicleMapper.commandBody(for: request)
+        )
+
+        guard let json = payload as? PorscheVehicleMapper.JSONObject,
+              let status = json["status"] as? PorscheVehicleMapper.JSONObject,
+              let identifier = status["id"] as? String,
+              let requestID = UUID(uuidString: identifier)
+        else {
+            throw PorscheApiError.missingCommandRequestId
+        }
+
+        let initialState = (status["result"] as? String).flatMap(PorscheCommandExecutionState.init(rawValue:)) ?? .unknown
+        if initialState == .accepted {
+            try await pollCommand(vin: request.vin, requestID: requestID)
+        }
+        return requestID
+    }
+
+    private func pollCommand(vin: String, requestID: UUID) async throws {
+        for _ in 0..<10 {
+            if commandPollIntervalNanoseconds > 0 {
+                try await Task.sleep(nanoseconds: commandPollIntervalNanoseconds)
+            }
+            let payload = try await authorizedJSONObject(endpoint: .commandStatus(vin: vin, requestId: requestID.uuidString))
+            guard let json = payload as? PorscheVehicleMapper.JSONObject else {
+                continue
+            }
+            let resultString = ((json["status"] as? PorscheVehicleMapper.JSONObject)?["result"] as? String) ?? "UNKNOWN"
+            switch PorscheCommandExecutionState(rawValue: resultString) ?? .unknown {
+            case .performed:
+                return
+            case .error:
+                throw PorscheApiError.commandFailed(resultString)
+            case .accepted, .unknown:
+                continue
+            }
+        }
+        throw PorscheApiError.commandFailed("timeout")
+    }
+
+    private func send(
+        endpoint: PorscheApiEndpoint,
+        method: String,
+        queryItems: [URLQueryItem],
+        body: Data?,
+        accessToken: String,
+        accept statusCodes: Set<Int>
+    ) async throws -> PorscheHTTPTransportResponse {
+        var components = URLComponents(url: try configuration.url(for: endpoint), resolvingAgainstBaseURL: true)
+        if !queryItems.isEmpty {
+            let existingItems = components?.queryItems ?? []
+            components?.queryItems = existingItems + queryItems
+        }
+
+        guard let url = components?.url else {
+            throw URLError(.badURL)
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.httpBody = body
+        request.setValue(configuration.userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue(configuration.xClientId, forHTTPHeaderField: "X-Client-ID")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        if body != nil {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
+
+        let response = try await transport(request)
+        guard statusCodes.contains(response.response.statusCode) else {
+            throw ApiError.unexpectedStatusCode(response.response.statusCode)
+        }
+        return response
     }
 }
 

@@ -30,6 +30,18 @@ struct AuthorizationData: Codable {
     /// Flag indicating if vehicle supports CCS2 protocol
     var isCcuCCS2Supported: Bool
 
+    /// Provider identifier for non-HMG integrations.
+    var providerKind: String? = nil
+
+    /// Optional token issuer metadata for provider-specific auth flows.
+    var tokenIssuer: String? = nil
+
+    /// Optional token audience metadata for provider-specific auth flows.
+    var tokenAudience: String? = nil
+
+    /// Optional scope metadata for provider-specific auth flows.
+    var tokenScope: String? = nil
+
     /// Generates authorization headers for API requests
     /// - Parameter configuration: API configuration for header generation
     /// - Returns: Dictionary of authorization headers
