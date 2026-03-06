@@ -13,6 +13,7 @@ enum ApiBrand: String {
     case kia
     case hyundai
     case genesis
+    case porsche
 
     /// Returns the appropriate API configuration for the brand and region combination
     /// - Parameter region: The geographic region for API endpoints
@@ -29,8 +30,22 @@ enum ApiBrand: String {
             case .usa, .canada, .china, .korea:
                 fatalError("Api region not supported")
             }
+        case .porsche:
+            switch region {
+            case .europe:
+                return PorscheApiConfiguration.europe
+            case .usa:
+                return PorscheApiConfiguration.usa
+            case .canada, .china, .korea:
+                fatalError("Api region not supported")
+            }
         }
     }
+}
+
+enum ApiProviderKind {
+    case hmg
+    case porsche
 }
 
 /// Protocol defining required configuration properties for API communication
@@ -85,6 +100,9 @@ protocol ApiConfiguration {
 
     /// Push notification type ("APNS" for iOS, "GCM" for Android)
     var pushType: String { get }
+
+    /// Backend provider kind.
+    var apiProviderKind: ApiProviderKind { get }
 }
 
 /// European region API configuration for supported vehicle brands
@@ -234,6 +252,140 @@ enum ApiConfigurationEurope: String, ApiConfiguration {
             "GCM"
         }
     }
+
+    var apiProviderKind: ApiProviderKind {
+        .hmg
+    }
+}
+
+enum PorscheApiConfiguration: String, ApiConfiguration {
+    case europe
+    case usa
+
+    var key: String {
+        "porsche"
+    }
+
+    var name: String {
+        "Porsche"
+    }
+
+    var port: Int {
+        443
+    }
+
+    var serviceAgent: String {
+        "PorscheConnect/1.0"
+    }
+
+    var userAgent: String {
+        let device = UIDevice.current
+        return "MyPorscheApp/1.0 (\(device.systemName) \(device.systemVersion))"
+    }
+
+    var acceptHeader: String {
+        "application/json"
+    }
+
+    // HMG-only host fields; kept for protocol compatibility.
+    var baseHost: String {
+        switch self {
+        case .europe:
+            "https://api.ppa.porsche.com"
+        case .usa:
+            "https://api.ppa.porsche.com"
+        }
+    }
+
+    var loginHost: String {
+        "https://identity.porsche.com"
+    }
+
+    var mqttHost: String {
+        "https://api.ppa.porsche.com"
+    }
+
+    var serviceId: String {
+        switch self {
+        case .europe:
+            "porsche-eu-service"
+        case .usa:
+            "porsche-us-service"
+        }
+    }
+
+    var appId: String {
+        "porsche-app-id"
+    }
+
+    var senderId: Int {
+        0
+    }
+
+    var authClientId: String {
+        "XhygisuebbrqQ80byOuU5VncxLIm8E6H"
+    }
+
+    var cfb: String {
+        // No HMG-style stamp for Porsche.
+        "cG9yc2NoZS1tb2NrLWNmYi10b2tlbi0xMjM0NTY3ODkwMTIzNA=="
+    }
+
+    var brandCode: String {
+        "P"
+    }
+
+    var brandName: String {
+        "Porsche"
+    }
+
+    var pushType: String {
+        "APNS"
+    }
+
+    var apiProviderKind: ApiProviderKind {
+        .porsche
+    }
+
+    var audience: String {
+        "https://api.porsche.com"
+    }
+
+    var redirectUri: String {
+        "my-porsche-app://auth0/callback"
+    }
+
+    var scope: String {
+        [
+            "openid",
+            "profile",
+            "email",
+            "offline_access",
+            "cars",
+            "charging",
+            "manageCharging",
+            "climatisation",
+            "manageClimatisation",
+        ].joined(separator: " ")
+    }
+
+    var appApiBaseURL: String {
+        switch self {
+        case .europe:
+            "https://api.ppa.porsche.com/app"
+        case .usa:
+            "https://api.ppa.porsche.com/app"
+        }
+    }
+
+    var locale: String {
+        switch self {
+        case .europe:
+            "de_DE"
+        case .usa:
+            "en_US"
+        }
+    }
 }
 
 /// Geographic regions where the API is available
@@ -274,4 +426,5 @@ struct MockApiConfiguration: ApiConfiguration {
     var brandCode: String = "M"
     var brandName: String = "Mocker"
     var pushType: String = "MOCK"
+    var apiProviderKind: ApiProviderKind = .hmg
 }

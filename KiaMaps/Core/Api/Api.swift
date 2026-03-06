@@ -9,6 +9,123 @@
 import Foundation
 import os.log
 
+protocol VehicleApiProvider {
+    func webLoginUrl() throws -> URL?
+    func login(username: String, password: String, recaptchaToken: String?) async throws -> AuthorizationData
+    func login(authorizationCode: String) async throws -> AuthorizationData
+    func logout() async throws
+    func vehicles() async throws -> VehicleResponse
+    func refreshVehicle(_ vehicleId: UUID) async throws -> UUID
+    func vehicleCachedStatus(_ vehicleId: UUID) async throws -> VehicleStateResponse
+    func profile() async throws -> String
+    func startClimate(_ vehicleId: UUID, options: ClimateControlOptions, pin: String) async throws -> UUID
+    func stopClimate(_ vehicleId: UUID) async throws -> UUID
+}
+
+enum VehicleApiProviderFactory {
+    static func provider(for api: Api) -> VehicleApiProvider {
+        switch api.configuration.apiProviderKind {
+        case .hmg:
+            HMGVehicleApiProvider(api: api)
+        case .porsche:
+            PorscheVehicleApiProvider(api: api)
+        }
+    }
+}
+
+final class HMGVehicleApiProvider: VehicleApiProvider {
+    private unowned let api: Api
+
+    init(api: Api) {
+        self.api = api
+    }
+
+    func webLoginUrl() throws -> URL? { try api.hmgWebLoginUrl() }
+    func login(username: String, password: String, recaptchaToken: String?) async throws -> AuthorizationData {
+        try await api.hmgLogin(username: username, password: password, recaptchaToken: recaptchaToken)
+    }
+
+    func login(authorizationCode: String) async throws -> AuthorizationData {
+        try await api.hmgLogin(authorizationCode: authorizationCode)
+    }
+
+    func logout() async throws { try await api.hmgLogout() }
+    func vehicles() async throws -> VehicleResponse { try await api.hmgVehicles() }
+    func refreshVehicle(_ vehicleId: UUID) async throws -> UUID { try await api.hmgRefreshVehicle(vehicleId) }
+    func vehicleCachedStatus(_ vehicleId: UUID) async throws -> VehicleStateResponse { try await api.hmgVehicleCachedStatus(vehicleId) }
+    func profile() async throws -> String { try await api.hmgProfile() }
+    func startClimate(_ vehicleId: UUID, options: ClimateControlOptions, pin: String) async throws -> UUID {
+        try await api.hmgStartClimate(vehicleId, options: options, pin: pin)
+    }
+
+    func stopClimate(_ vehicleId: UUID) async throws -> UUID {
+        try await api.hmgStopClimate(vehicleId)
+    }
+}
+
+final class PorscheVehicleApiProvider: VehicleApiProvider {
+    private let api: Api
+
+    init(api: Api) {
+        self.api = api
+    }
+
+    func webLoginUrl() throws -> URL? {
+        guard let porscheConfiguration = api.configuration as? PorscheApiConfiguration else {
+            throw ApiError.unexpectedStatusCode(nil)
+        }
+        guard var components = URLComponents(string: "https://identity.porsche.com/authorize") else {
+            throw ApiError.unexpectedStatusCode(nil)
+        }
+        components.queryItems = [
+            .init(name: "response_type", value: "code"),
+            .init(name: "client_id", value: porscheConfiguration.authClientId),
+            .init(name: "redirect_uri", value: porscheConfiguration.redirectUri),
+            .init(name: "audience", value: porscheConfiguration.audience),
+            .init(name: "scope", value: porscheConfiguration.scope),
+            .init(name: "state", value: UUID().uuidString),
+            .init(name: "ui_locales", value: porscheConfiguration.locale),
+        ]
+        return components.url
+    }
+
+    func login(username _: String, password _: String, recaptchaToken _: String?) async throws -> AuthorizationData {
+        throw ApiError.unexpectedStatusCode(nil)
+    }
+
+    func login(authorizationCode _: String) async throws -> AuthorizationData {
+        throw ApiError.unexpectedStatusCode(nil)
+    }
+
+    func logout() async throws {
+        api.authorization = nil
+    }
+
+    func vehicles() async throws -> VehicleResponse {
+        throw ApiError.unexpectedStatusCode(nil)
+    }
+
+    func refreshVehicle(_: UUID) async throws -> UUID {
+        throw ApiError.unexpectedStatusCode(nil)
+    }
+
+    func vehicleCachedStatus(_: UUID) async throws -> VehicleStateResponse {
+        throw ApiError.unexpectedStatusCode(nil)
+    }
+
+    func profile() async throws -> String {
+        throw ApiError.unexpectedStatusCode(nil)
+    }
+
+    func startClimate(_: UUID, options _: ClimateControlOptions, pin _: String) async throws -> UUID {
+        throw ApiError.unexpectedStatusCode(nil)
+    }
+
+    func stopClimate(_: UUID) async throws -> UUID {
+        throw ApiError.unexpectedStatusCode(nil)
+    }
+}
+
 /**
  * Api - Main interface for Kia/Hyundai/Genesis vehicle API communication
  * 
@@ -58,6 +175,7 @@ class Api {
     
     /// Provider that handles actual API request execution and token management
     private let provider: ApiRequestProvider
+    private lazy var vehicleApiProvider: VehicleApiProvider = VehicleApiProviderFactory.provider(for: self)
 
     init(configuration: ApiConfiguration, rsaService: RSAEncryptionService) {
         self.configuration = configuration
@@ -72,6 +190,10 @@ class Api {
     }
 
     func webLoginUrl() throws -> URL? {
+        try vehicleApiProvider.webLoginUrl()
+    }
+
+    func hmgWebLoginUrl() throws -> URL? {
         let queryItems = [
             URLQueryItem(name: "client_id", value: configuration.serviceId),
             URLQueryItem(name: "redirect_uri", value: "https://prd.eu-ccapi.kia.com:8080/api/v1/user/oauth2/redirect"),
@@ -95,6 +217,10 @@ class Api {
     /// - Returns: Complete authorization data including tokens and device ID
     /// - Throws: Authentication errors, network errors, or validation failures
     func login(username: String, password: String, recaptchaToken: String? = nil) async throws -> AuthorizationData {
+        try await vehicleApiProvider.login(username: username, password: password, recaptchaToken: recaptchaToken)
+    }
+
+    func hmgLogin(username: String, password: String, recaptchaToken: String? = nil) async throws -> AuthorizationData {
         cleanCookies()
         // Step 0: Get connector authorization (handles 302 redirect to get next_uri)
         let referer: String
@@ -142,6 +268,10 @@ class Api {
     }
 
     func login(authorizationCode: String) async throws -> AuthorizationData {
+        try await vehicleApiProvider.login(authorizationCode: authorizationCode)
+    }
+
+    func hmgLogin(authorizationCode: String) async throws -> AuthorizationData {
         // Step 6: Exchange authorization code for tokens
         let tokenResponse: TokenResponse
         do {
@@ -173,6 +303,10 @@ class Api {
     /// Logout user and clean up session data
     /// - Throws: Network errors (non-critical - cleanup continues regardless)
     func logout() async throws {
+        try await vehicleApiProvider.logout()
+    }
+
+    func hmgLogout() async throws {
         do {
             try await provider.request(with: .post, endpoint: .logout).empty()
             logInfo("Successfully logout", category: .auth)
@@ -187,6 +321,10 @@ class Api {
     /// - Returns: Complete vehicle response containing all registered vehicles
     /// - Throws: Network errors or authentication failures
     func vehicles() async throws -> VehicleResponse {
+        try await vehicleApiProvider.vehicles()
+    }
+
+    func hmgVehicles() async throws -> VehicleResponse {
         guard authorization != nil else {
             throw ApiError.unauthorized
         }
@@ -199,6 +337,10 @@ class Api {
     /// - Note: Uses CCS2 endpoint if supported, fallback to standard endpoint
     /// - Throws: Network errors or vehicle communication failures
     func refreshVehicle(_ vehicleId: UUID) async throws -> UUID {
+        try await vehicleApiProvider.refreshVehicle(vehicleId)
+    }
+
+    func hmgRefreshVehicle(_ vehicleId: UUID) async throws -> UUID {
         guard let authorization = authorization else {
             throw ApiError.unauthorized
         }
@@ -212,6 +354,10 @@ class Api {
     /// - Note: Uses CCS2 endpoint if supported, fallback to standard endpoint
     /// - Throws: Network errors or data parsing failures
     func vehicleCachedStatus(_ vehicleId: UUID) async throws -> VehicleStateResponse {
+        try await vehicleApiProvider.vehicleCachedStatus(vehicleId)
+    }
+
+    func hmgVehicleCachedStatus(_ vehicleId: UUID) async throws -> VehicleStateResponse {
         guard let authorization = authorization else {
             throw ApiError.unauthorized
         }
@@ -223,6 +369,10 @@ class Api {
     /// - Returns: User profile data as JSON string
     /// - Throws: Network errors or authentication failures
     func profile() async throws -> String {
+        try await vehicleApiProvider.profile()
+    }
+
+    func hmgProfile() async throws -> String {
         guard authorization != nil else {
             throw ApiError.unauthorized
         }
@@ -238,6 +388,10 @@ class Api {
     ///   - pin: Vehicle PIN (required for climate control)
     /// - Returns: Operation result ID for tracking
     func startClimate(_ vehicleId: UUID, options: ClimateControlOptions, pin: String) async throws -> UUID {
+        try await vehicleApiProvider.startClimate(vehicleId, options: options, pin: pin)
+    }
+
+    func hmgStartClimate(_ vehicleId: UUID, options: ClimateControlOptions, pin: String) async throws -> UUID {
         guard authorization?.accessToken != nil else {
             throw ApiError.unauthorized
         }
@@ -274,6 +428,10 @@ class Api {
     /// - Parameter vehicleId: The vehicle ID
     /// - Returns: Operation result ID for tracking
     func stopClimate(_ vehicleId: UUID) async throws -> UUID {
+        try await vehicleApiProvider.stopClimate(vehicleId)
+    }
+
+    func hmgStopClimate(_ vehicleId: UUID) async throws -> UUID {
         guard authorization?.accessToken != nil else {
             throw ApiError.unauthorized
         }
@@ -680,4 +838,3 @@ extension Api {
         }
     }
 }
-
