@@ -326,11 +326,11 @@ final class PorscheEndpointAndMapperTests: XCTestCase {
         XCTAssertTrue(snapshot.locked)
         XCTAssertTrue(snapshot.climateActive)
         XCTAssertEqual(snapshot.chargingPowerKw, 11)
-        XCTAssertEqual(state.state.vehicle.green.batteryManagement.batteryRemain.ratio, 62.5)
-        XCTAssertEqual(state.state.vehicle.drivetrain.odometer, 15_432)
-        XCTAssertEqual(state.state.vehicle.location?.geoCoordinate.latitude, 50.1)
-        XCTAssertEqual(state.state.vehicle.location?.geoCoordinate.longitude, 14.4)
-        XCTAssertEqual(state.state.vehicle.cabin.hvac.row1.driver.blower.speedLevel, 1)
+        XCTAssertEqual(state.status.green.batteryManagement.batteryRemain.ratio, 62.5)
+        XCTAssertEqual(state.status.drivetrain.odometer, 15_432)
+        XCTAssertEqual(state.status.location?.geoCoordinate.latitude, 50.1)
+        XCTAssertEqual(state.status.location?.geoCoordinate.longitude, 14.4)
+        XCTAssertEqual(state.status.cabin.hvac.row1.driver.blower.speedLevel, 1)
     }
 
     func testCommandBodyUsesRemoteClimatizerStartPayload() throws {
