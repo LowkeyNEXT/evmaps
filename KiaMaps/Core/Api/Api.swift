@@ -65,25 +65,21 @@ final class HMGVehicleApiProvider: VehicleApiProvider {
 
 final class PorscheVehicleApiProvider: VehicleApiProvider {
     private unowned let api: Api
-    private let transport: PorscheHTTPTransport
     private let authClient: PorscheAuthClient
     private let commandPollIntervalNanoseconds: UInt64
     private var vinByVehicleID: [UUID: String] = [:]
 
     init(
         api: Api,
-        transport: PorscheHTTPTransport? = nil,
         authClient: PorscheAuthClient? = nil,
         commandPollIntervalNanoseconds: UInt64 = 1_000_000_000
     ) {
         self.api = api
-        let resolvedTransport = transport ?? PorscheAuthClient.makeDefaultTransport()
-        self.transport = resolvedTransport
         self.commandPollIntervalNanoseconds = commandPollIntervalNanoseconds
         if let authClient {
             self.authClient = authClient
         } else {
-            self.authClient = PorscheAuthClient(configuration: Self.configuration(for: api), transport: resolvedTransport)
+            self.authClient = PorscheAuthClient(configuration: Self.configuration(for: api))
         }
     }
 
@@ -213,7 +209,7 @@ final class PorscheVehicleApiProvider: VehicleApiProvider {
 
     private func authorizedJSONObject(
         endpoint: PorscheApiEndpoint,
-        method: String = "GET",
+        method: ApiMethod = .get,
         queryItems: [URLQueryItem] = [],
         body: Data? = nil,
         retryOnUnauthorized: Bool = true
@@ -222,16 +218,19 @@ final class PorscheVehicleApiProvider: VehicleApiProvider {
             throw ApiError.unauthorized
         }
 
-        let response = try await send(
-            endpoint: endpoint,
-            method: method,
-            queryItems: queryItems,
-            body: body,
-            accessToken: authorization.accessToken,
-            accept: [200, 202, 401]
-        )
+        do {
+            let responseData = try await api.provider.request(
+                with: method,
+                endpoint: endpoint,
+                queryItems: queryItems,
+                body: body
+            ).rawData(acceptStatusCodes: [200, 202])
 
-        if response.response.statusCode == 401 {
+            if responseData.isEmpty {
+                return [:]
+            }
+            return try JSONSerialization.jsonObject(with: responseData)
+        } catch ApiError.unauthorized {
             guard retryOnUnauthorized else {
                 throw ApiError.unauthorized
             }
@@ -246,17 +245,12 @@ final class PorscheVehicleApiProvider: VehicleApiProvider {
                 retryOnUnauthorized: false
             )
         }
-
-        if response.data.isEmpty {
-            return [:]
-        }
-        return try JSONSerialization.jsonObject(with: response.data)
     }
 
     private func sendCommand(_ request: PorscheCommandRequest) async throws -> UUID {
         let payload = try await authorizedJSONObject(
             endpoint: .commands(request.vin),
-            method: "POST",
+            method: .post,
             body: PorscheVehicleMapper.commandBody(for: request)
         )
 
@@ -297,41 +291,6 @@ final class PorscheVehicleApiProvider: VehicleApiProvider {
         throw PorscheApiError.commandFailed("timeout")
     }
 
-    private func send(
-        endpoint: PorscheApiEndpoint,
-        method: String,
-        queryItems: [URLQueryItem],
-        body: Data?,
-        accessToken: String,
-        accept statusCodes: Set<Int>
-    ) async throws -> PorscheHTTPTransportResponse {
-        var components = URLComponents(url: try configuration.url(for: endpoint), resolvingAgainstBaseURL: true)
-        if !queryItems.isEmpty {
-            let existingItems = components?.queryItems ?? []
-            components?.queryItems = existingItems + queryItems
-        }
-
-        guard let url = components?.url else {
-            throw URLError(.badURL)
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = method
-        request.httpBody = body
-        request.setValue(configuration.userAgent, forHTTPHeaderField: "User-Agent")
-        request.setValue(configuration.xClientId, forHTTPHeaderField: "X-Client-ID")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        if body != nil {
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        }
-
-        let response = try await transport(request)
-        guard statusCodes.contains(response.response.statusCode) else {
-            throw ApiError.unexpectedStatusCode(response.response.statusCode)
-        }
-        return response
-    }
 }
 
 /**
@@ -382,7 +341,7 @@ class Api {
     private let rsaService: RSAEncryptionService
     
     /// Provider that handles actual API request execution and token management
-    private let provider: ApiRequestProvider
+    fileprivate let provider: ApiRequestProvider
     private lazy var vehicleApiProvider: VehicleApiProvider = VehicleApiProviderFactory.provider(for: self)
 
     init(configuration: ApiConfiguration, rsaService: RSAEncryptionService) {
@@ -411,7 +370,7 @@ class Api {
         ]
 
         return try provider.request(
-            endpoint: .oauth2UserAuthorize,
+            endpoint: KiaApiEndpoint.oauth2UserAuthorize,
             queryItems: queryItems,
             headers: commonNavigationHeaders()
         ).urlRequest.url
@@ -516,7 +475,7 @@ class Api {
 
     func hmgLogout() async throws {
         do {
-            try await provider.request(with: .post, endpoint: .logout).empty()
+            try await provider.request(with: .post, endpoint: KiaApiEndpoint.logout).empty()
             logInfo("Successfully logout", category: .auth)
         } catch {
             logError("Failed to logout: \(error.localizedDescription)", category: .auth)
@@ -536,7 +495,7 @@ class Api {
         guard authorization != nil else {
             throw ApiError.unauthorized
         }
-        return try await provider.request(endpoint: .vehicles).response()
+        return try await provider.request(endpoint: KiaApiEndpoint.vehicles).response()
     }
 
     /// Request fresh vehicle status update from the vehicle
@@ -552,7 +511,7 @@ class Api {
         guard let authorization = authorization else {
             throw ApiError.unauthorized
         }
-        let endpoint: ApiEndpoint = authorization.isCcuCCS2Supported == true ? .refreshCCS2Vehicle(vehicleId) : .refreshVehicle(vehicleId)
+        let endpoint: KiaApiEndpoint = authorization.isCcuCCS2Supported == true ? .refreshCCS2Vehicle(vehicleId) : .refreshVehicle(vehicleId)
         return try await provider.request(endpoint: endpoint).responseEmpty().resultId
     }
 
@@ -569,7 +528,7 @@ class Api {
         guard let authorization = authorization else {
             throw ApiError.unauthorized
         }
-        let endpoint: ApiEndpoint = authorization.isCcuCCS2Supported == true ? .vehicleCachedCCS2Status(vehicleId) : .vehicleCachedStatus(vehicleId)
+        let endpoint: KiaApiEndpoint = authorization.isCcuCCS2Supported == true ? .vehicleCachedCCS2Status(vehicleId) : .vehicleCachedStatus(vehicleId)
         return try await provider.request(endpoint: endpoint).response()
     }
 
@@ -584,7 +543,7 @@ class Api {
         guard authorization != nil else {
             throw ApiError.unauthorized
         }
-        return try await provider.request(endpoint: .userProfile).string()
+        return try await provider.request(endpoint: KiaApiEndpoint.userProfile).string()
     }
     
     // MARK: - Climate Control
@@ -627,7 +586,7 @@ class Api {
         
         return try await provider.request(
             with: .post,
-            endpoint: .startClimate(vehicleId),
+            endpoint: KiaApiEndpoint.startClimate(vehicleId),
             encodable: request
         ).responseEmpty().resultId
     }
@@ -645,7 +604,7 @@ class Api {
         }
         return try await provider.request(
             with: .post,
-            endpoint: .stopClimate(vehicleId)
+            endpoint: KiaApiEndpoint.stopClimate(vehicleId)
         ).responseEmpty().resultId
     }
 }
@@ -662,7 +621,7 @@ extension Api {
             throw ApiError.unauthorized
         }
 
-        let response: MQTTHostResponse = try await provider.request(endpoint: .mqttDeviceHost).data()
+        let response: MQTTHostResponse = try await provider.request(endpoint: KiaApiEndpoint.mqttDeviceHost).data()
         return MQTTHostInfo(
             host: response.mqtt.host,
             port: response.mqtt.port,
@@ -681,7 +640,7 @@ extension Api {
 
         let deviceUUID = "\(UUID().uuidString)_UVO"
         let request = DeviceRegisterRequest(unit: "mobile", uuid: deviceUUID)
-        let response: DeviceRegisterResponse = try await provider.request(endpoint: .mqttRegisterDevice, encodable: request).data()
+        let response: DeviceRegisterResponse = try await provider.request(endpoint: KiaApiEndpoint.mqttRegisterDevice, encodable: request).data()
 
         return MQTTDeviceInfo(
             clientId: response.clientId,
@@ -700,7 +659,7 @@ extension Api {
         }
 
         let response: VehicleMetadataResponse = try await provider.request(
-            endpoint: .mqttVehicleMetadata,
+            endpoint: KiaApiEndpoint.mqttVehicleMetadata,
             queryItems: [
                 URLQueryItem(name: "carId", value: vehicleId.uuidString),
                 URLQueryItem(name: "brand", value: configuration.brandCode)
@@ -731,7 +690,7 @@ extension Api {
         )
 
         try await provider.request(
-            endpoint: .mqttDeviceProtocol,
+            endpoint: KiaApiEndpoint.mqttDeviceProtocol,
             headers: [
                 "client-id": clientId
             ],
@@ -749,7 +708,7 @@ extension Api {
         }
 
         return try await provider.request(
-            endpoint: .mqttConnectionState,
+            endpoint: KiaApiEndpoint.mqttConnectionState,
             queryItems: [
                 URLQueryItem(name: "clientId", value: clientId),
             ],
@@ -771,7 +730,7 @@ extension Api {
             cert: "",
             action: "idpc_auth_endpoint",
             clientId: configuration.serviceId,
-            redirectUri: try makeRedirectUri(endpoint: .loginRedirect),
+            redirectUri: try makeRedirectUri(endpoint: KiaApiEndpoint.loginRedirect),
             responseType: "code",
             signupLink: nil,
             hmgid2ClientId: configuration.authClientId,
@@ -784,7 +743,7 @@ extension Api {
 
         let queryItems = [
             URLQueryItem(name: "client_id", value: configuration.serviceId),
-            URLQueryItem(name: "redirect_uri", value: try makeRedirectUri(endpoint: .loginRedirect).absoluteString),
+            URLQueryItem(name: "redirect_uri", value: try makeRedirectUri(endpoint: KiaApiEndpoint.loginRedirect).absoluteString),
             URLQueryItem(name: "response_type", value: "code"),
             URLQueryItem(name: "state", value: stateData.base64EncodedString()),
             URLQueryItem(name: "cert", value: ""),
@@ -793,7 +752,7 @@ extension Api {
         ]
 
         let referalUrl = try await provider.request(
-            endpoint: .oauth2ConnectorAuthorize,
+            endpoint: KiaApiEndpoint.oauth2ConnectorAuthorize,
             queryItems: queryItems,
             headers: commonNavigationHeaders()
         ).referalUrl()
@@ -808,7 +767,7 @@ extension Api {
     /// Login - Step 1: Get Client Configuration
     func fetchClientConfiguration(referer: String) async throws -> ClientConfiguration {
         try await provider.request(
-            endpoint: .loginConnectorClients(configuration.serviceId),
+            endpoint: KiaApiEndpoint.loginConnectorClients(configuration.serviceId),
             headers: commonJSONHeaders()
         ).responseValue()
     }
@@ -816,7 +775,7 @@ extension Api {
     /// Login - Step 2: Check Password Encryption Settings
     func fetchPasswordEncryptionSettings(referer: String) async throws -> PasswordEncryptionSettings {
         try await provider.request(
-            endpoint: .loginCodes,
+            endpoint: KiaApiEndpoint.loginCodes,
             headers: commonJSONHeaders(referer: referer)
         ).responseValue()
     }
@@ -824,7 +783,7 @@ extension Api {
     /// Login - Step 3: Get RSA Certificate
     func fetchRSACertificate(referer: String) async throws -> RSAEncryptionService.RSAKeyData {
         let certificate: RSACertificateResponse = try await provider.request(
-            endpoint: .loginCertificates,
+            endpoint: KiaApiEndpoint.loginCertificates,
             headers: commonJSONHeaders(referer: referer)
         ).responseValue()
 
@@ -847,7 +806,7 @@ extension Api {
         ]
 
         _ = try await provider.request(
-            endpoint: .oauth2UserAuthorize,
+            endpoint: KiaApiEndpoint.oauth2UserAuthorize,
             queryItems: queryItems,
             headers: commonNavigationHeaders(referer: referer)
         ).empty(acceptStatusCode: 302)
@@ -895,7 +854,7 @@ extension Api {
 
         let referalUrl = try await provider.request(
             with: .post,
-            endpoint: .loginSignin,
+            endpoint: KiaApiEndpoint.loginSignin,
             headers: [
                 "Sec-Fetch-Site": "same-origin",
                 "Sec-Fetch-Mode": "navigate",
@@ -925,7 +884,7 @@ extension Api {
 
         return try await provider.request(
             with: .post,
-            endpoint: .loginToken,
+            endpoint: KiaApiEndpoint.loginToken,
             form: form
         ).data()
     }
@@ -953,7 +912,7 @@ extension Api {
         ]
 
         let response: NotificationRegistrationResponse = try await provider.request(
-            endpoint: .notificationRegister,
+            endpoint: KiaApiEndpoint.notificationRegister,
             headers: headers,
             encodable: payload
         ).response(acceptStatusCode: 302)
@@ -967,12 +926,12 @@ extension Api {
         var headers: ApiRequest.Headers = provider.authorization?.authorizatioHeaders(for: configuration) ?? [:]
         headers["Content-Type"] = "application/json; charset=UTF-8"
         headers["offset"] = "2"
-        try await provider.request(with: .post, endpoint: .notificationRegisterWithDeviceId(deviceId), headers: headers).empty(acceptStatusCode: 200)
+        try await provider.request(with: .post, endpoint: KiaApiEndpoint.notificationRegisterWithDeviceId(deviceId), headers: headers).empty(acceptStatusCode: 200)
     }
 
     // MARK: - Helpers
 
-    func makeRedirectUri(endpoint: ApiEndpoint = .oauth2Redirect) throws -> URL {
+    func makeRedirectUri(endpoint: KiaApiEndpoint = .oauth2Redirect) throws -> URL {
         try provider.configuration.url(for: endpoint)
     }
 

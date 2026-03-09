@@ -46,7 +46,17 @@ struct AuthorizationData: Codable {
     /// - Parameter configuration: API configuration for header generation
     /// - Returns: Dictionary of authorization headers
     func authorizatioHeaders(for configuration: ApiConfiguration) -> ApiRequest.Headers {
-        [
+        if providerKind == "porsche" {
+            var headers: ApiRequest.Headers = [
+                "Authorization": "Bearer \(accessToken)",
+            ]
+            if let configuration = configuration as? PorscheApiConfiguration {
+                headers["X-Client-ID"] = configuration.xClientId
+            }
+            return headers
+        }
+
+        return [
             "Authorization": "Bearer \(accessToken)",
             "Stamp": Self.generateStamp(for: configuration),
             "ccsp-application-id": configuration.appId,

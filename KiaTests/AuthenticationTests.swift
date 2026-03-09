@@ -480,7 +480,7 @@ class MockApiProvider: ApiRequestProvider, ApiCaller {
 struct MockApiRequest: ApiRequest {
     let caller: ApiCaller
     let method: ApiMethod
-    let endpoint: ApiEndpoint
+    let endpoint: any ApiEndpointProtocol
     let queryItems: [URLQueryItem]
     let headers: Headers
     let body: Data?
@@ -498,7 +498,7 @@ struct MockApiRequest: ApiRequest {
     init(
         caller: ApiCaller,
         method: ApiMethod?,
-        endpoint: ApiEndpoint,
+        endpoint: any ApiEndpointProtocol,
         queryItems: [URLQueryItem],
         headers: Headers,
         encodable: Encodable,
@@ -523,7 +523,7 @@ struct MockApiRequest: ApiRequest {
     init(
         caller: ApiCaller,
         method: ApiMethod?,
-        endpoint: ApiEndpoint,
+        endpoint: any ApiEndpointProtocol,
         queryItems: [URLQueryItem],
         headers: Headers,
         body: Data?,
@@ -548,7 +548,7 @@ struct MockApiRequest: ApiRequest {
     init(
         caller: ApiCaller,
         method: ApiMethod?,
-        endpoint: ApiEndpoint,
+        endpoint: any ApiEndpointProtocol,
         queryItems: [URLQueryItem],
         headers: Headers,
         form: Form,
@@ -600,6 +600,10 @@ struct MockApiRequest: ApiRequest {
         return url
     }
 
+    func referalUrl(acceptStatusCodes _: Set<Int>) async throws -> URL {
+        try await referalUrl(acceptStatusCode: 302)
+    }
+
     func response<Data: Decodable>(acceptStatusCode: Int) async throws -> Data {
         guard let provider = caller as? MockApiProvider else {
             throw URLError(.badServerResponse)
@@ -641,7 +645,15 @@ struct MockApiRequest: ApiRequest {
         throw URLError(.badServerResponse)
     }
 
+    func string(acceptStatusCodes _: Set<Int>) async throws -> String {
+        throw URLError(.badServerResponse)
+    }
+
     func httpResponse(acceptStatusCode: Int) async throws -> HTTPURLResponse {
+        throw URLError(.badServerResponse)
+    }
+
+    func httpResponse(acceptStatusCodes _: Set<Int>) async throws -> HTTPURLResponse {
         throw URLError(.badServerResponse)
     }
 
@@ -655,6 +667,14 @@ struct MockApiRequest: ApiRequest {
             return provider.mockTokenResponse as! T
         }
 
+        throw URLError(.badServerResponse)
+    }
+
+    func data<T: Decodable>(acceptStatusCodes _: Set<Int>) async throws -> T {
+        try await data(acceptStatusCode: 200)
+    }
+
+    func rawData(acceptStatusCodes _: Set<Int>) async throws -> Data {
         throw URLError(.badServerResponse)
     }
 }

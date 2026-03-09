@@ -23,7 +23,7 @@ enum ApiBrand: String {
         case .kia, .hyundai, .genesis:
             switch region {
             case .europe:
-                guard let configuration = ApiConfigurationEurope(rawValue: rawValue) else {
+                guard let configuration = KiaApiConfigurationEurope(rawValue: rawValue) else {
                     fatalError("Api region not supported")
                 }
                 return configuration
@@ -107,7 +107,7 @@ protocol ApiConfiguration {
 
 /// European region API configuration for supported vehicle brands
 /// Provides brand-specific endpoints, credentials, and service identifiers for EU market
-enum ApiConfigurationEurope: String, ApiConfiguration {
+enum KiaApiConfigurationEurope: String, ApiConfiguration {
     case kia
     case hyundai
     case genesis

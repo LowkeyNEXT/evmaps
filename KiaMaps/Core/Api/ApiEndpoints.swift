@@ -8,17 +8,25 @@
 
 import Foundation
 
-/// Defines all API endpoints for vehicle communication
-/// Organized by endpoint type and relative base URL
-enum ApiEndpoint: CustomStringConvertible {
-    /// Specifies which base URL an endpoint is relative to
+/// Specifies which base URL an endpoint is relative to.
+enum ApiEndpointBase {
     enum RelativeTo {
-        case base    // Main API base host
-        case login   // Authentication host
-        case spa     // Single Page Application API host
-        case user    // User profile host
-        case mqtt    // MQTT host
+        case base   // Main API base host
+        case login  // Authentication host
+        case spa    // Single Page Application API host
+        case user   // User profile host
+        case mqtt   // MQTT host
     }
+}
+
+/// Shared protocol for brand-specific endpoint enums.
+protocol ApiEndpointProtocol: CustomStringConvertible {
+    var path: (String, ApiEndpointBase.RelativeTo) { get }
+}
+
+/// Defines Kia/Hyundai/Genesis API endpoints.
+/// Organized by endpoint type and relative base URL.
+enum KiaApiEndpoint: ApiEndpointProtocol {
 
     // MARK: - OAuth2 Authentication Endpoints
     case oauth2ConnectorAuthorize       // Initial OAuth2 authorization with connector
@@ -61,7 +69,7 @@ enum ApiEndpoint: CustomStringConvertible {
 
     /// Returns the endpoint path and its relative base URL
     /// - Returns: Tuple containing the path string and which base URL it's relative to
-    var path: (String, RelativeTo) {
+    var path: (String, ApiEndpointBase.RelativeTo) {
         switch self {
         case .oauth2ConnectorAuthorize:
             ("api/v1/user/oauth2/connector/common/authorize", .base)

@@ -7,7 +7,7 @@
 
 import Foundation
 
-enum PorscheApiEndpoint {
+enum PorscheApiEndpoint: ApiEndpointProtocol {
     case authorize
     case loginIdentifier
     case loginPassword
@@ -19,48 +19,53 @@ enum PorscheApiEndpoint {
     case commandStatus(vin: String, requestId: String)
     case profile
 
-    var path: String {
+    var path: (String, ApiEndpointBase.RelativeTo) {
         switch self {
         case .authorize:
-            "authorize"
+            ("authorize", .user)
         case .loginIdentifier:
-            "u/login/identifier"
+            ("u/login/identifier", .user)
         case .loginPassword:
-            "u/login/password"
+            ("u/login/password", .user)
         case .mfaOTP:
-            "u/mfa-otp-challenge"
+            ("u/mfa-otp-challenge", .user)
         case .token:
-            "oauth/token"
+            ("oauth/token", .user)
         case .vehicles:
-            "connect/v1/vehicles"
+            ("connect/v1/vehicles", .base)
         case let .vehicle(vin):
-            "connect/v1/vehicles/\(vin)"
+            ("connect/v1/vehicles/\(vin)", .base)
         case let .commands(vin):
-            "connect/v1/vehicles/\(vin)/commands"
+            ("connect/v1/vehicles/\(vin)/commands", .base)
         case let .commandStatus(vin, requestId):
-            "connect/v1/vehicles/\(vin)/commands/\(requestId)"
+            ("connect/v1/vehicles/\(vin)/commands/\(requestId)", .base)
         case .profile:
-            "account/v1/profile"
+            ("account/v1/profile", .base)
         }
     }
 
-    var usesIdentityHost: Bool {
+    var description: String {
         switch self {
-        case .authorize, .loginIdentifier, .loginPassword, .mfaOTP, .token:
-            true
-        case .vehicles, .vehicle, .commands, .commandStatus, .profile:
-            false
+        case .authorize:
+            "porscheAuthorize"
+        case .loginIdentifier:
+            "porscheLoginIdentifier"
+        case .loginPassword:
+            "porscheLoginPassword"
+        case .mfaOTP:
+            "porscheMfaOtp"
+        case .token:
+            "porscheToken"
+        case .vehicles:
+            "porscheVehicles"
+        case .vehicle:
+            "porscheVehicle"
+        case .commands:
+            "porscheCommands"
+        case .commandStatus:
+            "porscheCommandStatus"
+        case .profile:
+            "porscheProfile"
         }
-    }
-}
-
-extension PorscheApiConfiguration {
-    func url(for endpoint: PorscheApiEndpoint) throws -> URL {
-        let base = endpoint.usesIdentityHost ? loginHost : appApiBaseURL
-        let normalizedBase = base.hasSuffix("/") ? base : base + "/"
-        guard let url = URL(string: endpoint.path, relativeTo: URL(string: normalizedBase)) else {
-            throw URLError(.badURL)
-        }
-        return url
     }
 }

@@ -53,7 +53,7 @@ struct PorscheAuthClient {
     }
 
     func makeAuthorizeURL(state: String = UUID().uuidString) throws -> URL {
-        let endpointURL = try configuration.url(for: .authorize)
+        let endpointURL = try configuration.url(for: PorscheApiEndpoint.authorize)
         guard var components = URLComponents(url: endpointURL, resolvingAgainstBaseURL: true) else {
             throw PorscheAuthError.invalidRedirect
         }
@@ -99,7 +99,7 @@ struct PorscheAuthClient {
 
     func exchangeAuthorizationCode(_ authorizationCode: String) async throws -> PorscheTokenSet {
         let response: PorscheTokenResponse = try await formRequest(
-            endpoint: .token,
+            endpoint: PorscheApiEndpoint.token,
             form: [
                 "client_id": configuration.authClientId,
                 "grant_type": "authorization_code",
@@ -112,7 +112,7 @@ struct PorscheAuthClient {
 
     func refreshToken(_ refreshToken: String) async throws -> PorscheTokenSet {
         let response: PorscheTokenResponse = try await formRequest(
-            endpoint: .token,
+            endpoint: PorscheApiEndpoint.token,
             form: [
                 "client_id": configuration.authClientId,
                 "grant_type": "refresh_token",
@@ -144,7 +144,7 @@ struct PorscheAuthClient {
     private func submitIdentifier(username: String, state: String) async throws {
         let response = try await send(
             request(
-                endpoint: .loginIdentifier,
+                endpoint: PorscheApiEndpoint.loginIdentifier,
                 queryItems: [.init(name: "state", value: state)],
                 form: [
                     "state": state,
@@ -177,7 +177,7 @@ struct PorscheAuthClient {
     private func submitPassword(username: String, password: String, state: String) async throws -> URL {
         let response = try await send(
             request(
-                endpoint: .loginPassword,
+                endpoint: PorscheApiEndpoint.loginPassword,
                 queryItems: [.init(name: "state", value: state)],
                 form: [
                     "state": state,
