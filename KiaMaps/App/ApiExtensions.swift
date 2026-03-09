@@ -168,7 +168,7 @@ extension Api {
     }
     
     /// Fetch cached vehicle status with automatic token refresh
-    func vehicleCachedStatusWithAutoRefresh(_ vehicleId: UUID) async throws -> VehicleStateResponse {
+    func vehicleCachedStatusWithAutoRefresh(_ vehicleId: UUID) async throws -> VehicleStatusSnapshot {
         return try await executeWithAutoRefresh {
             return try await self.vehicleCachedStatus(vehicleId)
         }

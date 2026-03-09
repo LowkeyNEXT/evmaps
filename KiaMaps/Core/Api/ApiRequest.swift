@@ -41,6 +41,8 @@ enum ApiError: Error {
     case unexpectedStatusCode(Int?)
     /// Authentication failed (401 status)
     case unauthorized
+    /// Feature unavailable for active API provider
+    case unsupported(String)
 
     /// Human-readable error descriptions
     var localizedDescription: String {
@@ -51,6 +53,8 @@ enum ApiError: Error {
             "unexpectedStatusCode:\(String(describing: int))"
         case .unauthorized:
             "unauthorized"
+        case let .unsupported(message):
+            message
         }
     }
 }

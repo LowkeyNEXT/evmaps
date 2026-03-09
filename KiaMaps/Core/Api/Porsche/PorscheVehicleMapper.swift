@@ -58,49 +58,117 @@ enum PorscheVehicleMapper {
         return VehicleResponse(vehicles: vehicles)
     }
 
-    static func mapVehicleState(from payload: JSONObject, now: Date = Date()) throws -> VehicleStateResponse {
+    static func mapVehicleState(from payload: JSONObject, now: Date = Date()) throws -> VehicleStatusSnapshot {
         let summary = mapSummary(from: payload)
         let snapshot = map(summary: summary)
-        var json = try responseJSONTemplate()
+        let doorLockValue = snapshot.locked
+        let doorOpenFrontLeft = measurementBool("OPEN_STATE_DOOR_FRONT_LEFT", payload: payload)
+        let doorOpenFrontRight = measurementBool("OPEN_STATE_DOOR_FRONT_RIGHT", payload: payload)
+        let doorOpenRearLeft = measurementBool("OPEN_STATE_DOOR_REAR_LEFT", payload: payload)
+        let doorOpenRearRight = measurementBool("OPEN_STATE_DOOR_REAR_RIGHT", payload: payload)
+        let hoodOpen = measurementBool("OPEN_STATE_LID_FRONT", payload: payload)
+        let trunkOpen = measurementBool("OPEN_STATE_LID_REAR", payload: payload)
 
-        set(value: TimeIntervalDateFormatter().string(from: now), at: ["lastUpdateTime"], in: &json)
-        set(value: TimeIntervalDateFormatter().string(from: now), at: ["state", "Vehicle", "Date"], in: &json)
-        set(value: snapshot.batterySoc, at: ["state", "Vehicle", "Green", "BatteryManagement", "BatteryRemain", "Ratio"], in: &json)
-        set(value: max(snapshot.batterySoc, 1) * 2_300, at: ["state", "Vehicle", "Green", "BatteryManagement", "BatteryRemain", "Value"], in: &json)
-        set(value: snapshot.charging ? ChargeDoorStatus.open.rawValue : ChargeDoorStatus.closed.rawValue, at: ["state", "Vehicle", "Green", "ChargingDoor", "State"], in: &json)
-        set(value: snapshot.charging ? 1 : 0, at: ["state", "Vehicle", "Green", "ChargingInformation", "ConnectorFastening", "State"], in: &json)
-        set(value: snapshot.chargingPowerKw * 1_000, at: ["state", "Vehicle", "Green", "Electric", "SmartGrid", "RealTimePower"], in: &json)
-        set(value: snapshot.climateActive ? 1 : 0, at: ["state", "Vehicle", "Cabin", "HVAC", "Row1", "Driver", "Blower", "SpeedLevel"], in: &json)
-        set(value: String(format: "%.0fC", climateTargetTemperature(from: payload) ?? 22), at: ["state", "Vehicle", "Cabin", "HVAC", "Row1", "Driver", "Temperature", "Value"], in: &json)
-        set(value: snapshot.odometerKm, at: ["state", "Vehicle", "Drivetrain", "Odometer"], in: &json)
-        set(value: snapshot.rangeKm > 0 ? Int(snapshot.rangeKm.rounded()) : 0, at: ["state", "Vehicle", "Drivetrain", "FuelSystem", "DTE", "Total"], in: &json)
-        set(value: snapshot.locked, at: ["state", "Vehicle", "Cabin", "Door", "Row1", "Driver", "Lock"], in: &json)
-        set(value: snapshot.locked, at: ["state", "Vehicle", "Cabin", "Door", "Row1", "Passenger", "Lock"], in: &json)
-        set(value: snapshot.locked, at: ["state", "Vehicle", "Cabin", "Door", "Row2", "Left", "Lock"], in: &json)
-        set(value: snapshot.locked, at: ["state", "Vehicle", "Cabin", "Door", "Row2", "Right", "Lock"], in: &json)
-        set(value: measurementBool("OPEN_STATE_DOOR_FRONT_LEFT", payload: payload), at: ["state", "Vehicle", "Cabin", "Door", "Row1", "Driver", "Open"], in: &json)
-        set(value: measurementBool("OPEN_STATE_DOOR_FRONT_RIGHT", payload: payload), at: ["state", "Vehicle", "Cabin", "Door", "Row1", "Passenger", "Open"], in: &json)
-        set(value: measurementBool("OPEN_STATE_DOOR_REAR_LEFT", payload: payload), at: ["state", "Vehicle", "Cabin", "Door", "Row2", "Left", "Open"], in: &json)
-        set(value: measurementBool("OPEN_STATE_DOOR_REAR_RIGHT", payload: payload), at: ["state", "Vehicle", "Cabin", "Door", "Row2", "Right", "Open"], in: &json)
-        set(value: measurementBool("OPEN_STATE_LID_REAR", payload: payload), at: ["state", "Vehicle", "Body", "Trunk", "Open"], in: &json)
-        set(value: measurementBool("OPEN_STATE_LID_FRONT", payload: payload), at: ["state", "Vehicle", "Body", "Hood", "Open"], in: &json)
-
-        if let latitude = snapshot.latitude, let longitude = snapshot.longitude {
-            set(value: latitude, at: ["state", "Vehicle", "Location", "GeoCoord", "Latitude"], in: &json)
-            set(value: longitude, at: ["state", "Vehicle", "Location", "GeoCoord", "Longitude"], in: &json)
-        }
-        if let heading = locationHeading(from: payload) {
-            set(value: heading, at: ["state", "Vehicle", "Location", "Heading"], in: &json)
-        }
-        let locationDate = locationDateString(from: payload) ?? TimeIntervalDateFormatter().string(from: now)
-        set(value: locationDate, at: ["state", "Vehicle", "Location", "Date"], in: &json)
-
-        let data = try JSONSerialization.data(withJSONObject: json, options: [.sortedKeys])
-        do {
-            return try JSONDecoder().decode(VehicleStateResponse.self, from: data)
-        } catch {
-            throw PorscheApiError.decodingFailed(error.localizedDescription)
-        }
+        return VehicleStatusSnapshot(
+            lastUpdateTime: now,
+            status: VehicleStatus(
+                body: .init(
+                    hood: .init(
+                        open: hoodOpen,
+                        frunk: .init(fault: false)
+                    ),
+                    trunk: .init(open: trunkOpen)
+                ),
+                cabin: .init(
+                    hvac: .init(
+                        row1: .init(
+                            driver: .init(
+                                temperature: .init(
+                                    value: String(format: "%.0f", climateTargetTemperature(from: payload) ?? 22),
+                                    unit: .celsius
+                                ),
+                                blower: .init(speedLevel: snapshot.climateActive ? 1 : 0)
+                            )
+                        ),
+                        ventilation: .init(airCleaning: .init(indicator: 0))
+                    ),
+                    door: .init(
+                        row1: .init(
+                            passenger: .init(lock: doorLockValue, open: doorOpenFrontRight),
+                            driver: .init(lock: doorLockValue, open: doorOpenFrontLeft)
+                        ),
+                        row2: .init(
+                            left: .init(lock: doorLockValue, open: doorOpenRearLeft),
+                            right: .init(lock: doorLockValue, open: doorOpenRearRight)
+                        )
+                    ),
+                    seat: .init(
+                        row1: .init(
+                            passenger: .init(climate: .init(state: 0)),
+                            driver: .init(climate: .init(state: 0))
+                        ),
+                        row2: .init(
+                            left: .init(climate: .init(state: 0)),
+                            right: .init(climate: .init(state: 0))
+                        )
+                    )
+                ),
+                chassis: .init(
+                    axle: .init(
+                        row1: .init(
+                            left: .init(tire: .init(pressureLow: false, pressure: 0)),
+                            right: .init(tire: .init(pressureLow: false, pressure: 0))
+                        ),
+                        row2: .init(
+                            left: .init(tire: .init(pressureLow: false, pressure: 0)),
+                            right: .init(tire: .init(pressureLow: false, pressure: 0))
+                        ),
+                        tire: .init(pressureLow: false, pressureUnit: 0)
+                    )
+                ),
+                drivetrain: .init(
+                    fuelSystem: .init(
+                        dte: .init(
+                            unit: .kilometers,
+                            total: snapshot.rangeKm > 0 ? Int(snapshot.rangeKm.rounded()) : 0
+                        ),
+                        averageFuelEconomy: .init(
+                            drive: 0,
+                            afterRefuel: 0,
+                            accumulated: 0,
+                            unit: .km1Kwh
+                        )
+                    ),
+                    odometer: snapshot.odometerKm,
+                    transmission: .init(parkingPosition: true)
+                ),
+                green: .init(
+                    batteryManagement: .init(
+                        soH: .init(ratio: 100),
+                        batteryRemain: .init(
+                            value: max(snapshot.batterySoc, 1) * 2_300,
+                            ratio: snapshot.batterySoc
+                        )
+                    ),
+                    electric: .init(
+                        smartGrid: .init(
+                            vehicleToLoad: .init(dischargeLimitation: .init(soc: 0, remainTime: 0)),
+                            vehicleToGrid: .init(mode: false),
+                            realTimePower: snapshot.chargingPowerKw * 1_000
+                        )
+                    ),
+                    chargingInformation: .init(
+                        connectorFastening: .init(state: snapshot.charging ? 1 : 0),
+                        electricCurrentLevel: .init(state: 0),
+                        charging: .init(remainTime: 0, remainTimeUnit: .minute)
+                    ),
+                    chargingDoor: .init(state: snapshot.charging ? .open : .closed),
+                    drivingHistory: .init(average: 0, unit: .kilometers)
+                ),
+                drivingReady: false,
+                location: mapLocation(snapshot: snapshot, payload: payload, fallbackDate: now)
+            )
+        )
     }
 
     static func mapSummary(from payload: JSONObject) -> PorscheVehicleSummary {
@@ -157,17 +225,38 @@ enum PorscheVehicleMapper {
         return try! JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
     }
 
-    private static func responseJSONTemplate() throws -> JSONObject {
-        let data = try JSONEncoder().encode(MockVehicleData.standardResponse)
-        guard let json = try JSONSerialization.jsonObject(with: data) as? JSONObject else {
-            throw PorscheApiError.decodingFailed("invalid response template")
-        }
-        return json
-    }
-
     private static func decodeVehicle(json: JSONObject) throws -> Vehicle {
         let data = try JSONSerialization.data(withJSONObject: json, options: [.sortedKeys])
         return try JSONDecoder().decode(Vehicle.self, from: data)
+    }
+
+    private static func mapLocation(
+        snapshot: PorscheVehicleSnapshot,
+        payload: JSONObject,
+        fallbackDate: Date
+    ) -> VehicleStatus.Location? {
+        guard let latitude = snapshot.latitude, let longitude = snapshot.longitude else {
+            return nil
+        }
+
+        let date: Date
+        if let dateString = locationDateString(from: payload),
+           let parsed = TimeIntervalDateFormatter().date(from: dateString) {
+            date = parsed
+        } else {
+            date = fallbackDate
+        }
+
+        return .init(
+            date: date,
+            geoCoordinate: .init(
+                altitude: 0,
+                latitude: latitude,
+                longitude: longitude
+            ),
+            heading: locationHeading(from: payload) ?? 0,
+            speed: .init(unit: .km, value: 0)
+        )
     }
 
     private static func vehicleTypeCode(from payload: JSONObject) -> String {
