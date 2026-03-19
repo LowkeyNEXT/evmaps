@@ -213,6 +213,24 @@ final class MockVehicleDataTests: XCTestCase {
         XCTAssertEqual(VehicleState.location?.heading, 180) // Charging
         XCTAssertEqual(VehicleState.green.drivingReady, false)
     }
+
+    func testVehicleStateJSONDecodingSupportsUnknownChargingDoorState() throws {
+        let baseJSON = MockVehicleData.createVehicleStateJSON(
+            batteryLevel: 50,
+            isCharging: false,
+            drivingReady: true,
+            scenario: "test"
+        )
+        let unknownDoorStateJSON = baseJSON.replacingOccurrences(
+            of: "\"ChargingDoor\": {\n                    \"State\": 2,",
+            with: "\"ChargingDoor\": {\n                    \"State\": 0,"
+        )
+
+        let jsonData = try XCTUnwrap(unknownDoorStateJSON.data(using: .utf8))
+        let decodedState = try JSONDecoder().decode(VehicleState.self, from: jsonData)
+
+        XCTAssertEqual(decodedState.green.chargingDoor.state, .unknown)
+    }
     
     // MARK: - VehicleStateResponse Tests
     
