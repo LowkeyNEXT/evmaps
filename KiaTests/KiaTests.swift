@@ -7,6 +7,7 @@
 //
 
 import XCTest
+@testable import KiaMaps
 
 final class KiaTests: XCTestCase {
 
@@ -59,4 +60,26 @@ final class KiaTests: XCTestCase {
         }
     }
 
+    func testChargeDoorStatusDecodesUnknownFromZero() throws {
+        let data = Data("0".utf8)
+        let value = try JSONDecoder().decode(ChargeDoorStatus.self, from: data)
+        XCTAssertEqual(value, .unknown)
+    }
+
+    func testChargeDoorStatusRoundTripsKnownValues() throws {
+        let values: [ChargeDoorStatus] = [.unknown, .open, .closed]
+        let decoder = JSONDecoder()
+        let encoder = JSONEncoder()
+
+        for value in values {
+            let encoded = try encoder.encode(value)
+            let decoded = try decoder.decode(ChargeDoorStatus.self, from: encoded)
+            XCTAssertEqual(decoded, value)
+        }
+    }
+
+    func testChargeDoorStatusRejectsUnsupportedRawValue() {
+        let data = Data("99".utf8)
+        XCTAssertThrowsError(try JSONDecoder().decode(ChargeDoorStatus.self, from: data))
+    }
 }
