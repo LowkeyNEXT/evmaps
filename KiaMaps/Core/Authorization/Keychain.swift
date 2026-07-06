@@ -82,6 +82,10 @@ struct Keychain<Key: RawRepresentable> {
         AppConfiguration.accessGroupId
     }
 
+    private static var accessGroupIds: [String] {
+        [AppConfiguration.accessGroupId] + AppConfiguration.legacyAccessGroupIds
+    }
+
     /// Stores a Codable value in the keychain or removes it if value is nil
     /// - Parameters:
     ///   - value: The value to store, or nil to remove existing value
@@ -116,22 +120,36 @@ struct Keychain<Key: RawRepresentable> {
     /// Removes a value from the keychain at the specified path
     /// - Parameter path: The keychain service identifier for the item to remove
     static func removeValue(at path: Key) {
-        let nativeQuery: [KeychainSecurityKeys: Any] = [
-            .className: KeychainSecurityKeys.genericPassword.rawValue,
-            .attributeService: path.rawValue,
-            .attributeAccount: "local",
-            .synchronizable: kCFBooleanFalse as Any,
-            .accessGroup: accessGroupId,
-        ]
-        let deleteStatus = SecItemDelete(nativeQuery.securityQuery)
+        for accessGroupId in accessGroupIds {
+            let nativeQuery: [KeychainSecurityKeys: Any] = [
+                .className: KeychainSecurityKeys.genericPassword.rawValue,
+                .attributeService: path.rawValue,
+                .attributeAccount: "local",
+                .synchronizable: kCFBooleanFalse as Any,
+                .accessGroup: accessGroupId,
+            ]
+            let deleteStatus = SecItemDelete(nativeQuery.securityQuery)
 
-        checkForErrors("Store empty failed to delete value at path: \(path).", status: deleteStatus)
+            checkForErrors("Store empty failed to delete value at path: \(path).", status: deleteStatus)
+        }
     }
 
     /// Retrieves and decodes a Codable value from the keychain
     /// - Parameter path: The keychain service identifier for the item to retrieve
     /// - Returns: The decoded value of type Content, or nil if not found or decoding fails
     static func value<Content: Codable>(for path: Key) -> Content? {
+        for accessGroupId in accessGroupIds {
+            if let value: Content = value(for: path, accessGroupId: accessGroupId) {
+                if accessGroupId != Self.accessGroupId {
+                    store(value: value, path: path)
+                }
+                return value
+            }
+        }
+        return nil
+    }
+
+    private static func value<Content: Codable>(for path: Key, accessGroupId: String) -> Content? {
         let nativeQuery: [KeychainSecurityKeys: Any] = [
             .className: KeychainSecurityKeys.genericPassword.rawValue,
             .attributeService: path.rawValue,

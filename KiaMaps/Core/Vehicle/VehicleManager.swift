@@ -53,6 +53,11 @@ struct VehicleManager {
 
     /// Returns vehicle-specific parameters based on stored vehicle type
     var vehicleParamter: VehicleParameters {
+        let selectedProfile = VehicleProfileStore.selected()
+        if selectedProfile.id != VehicleProfile.porscheTaycanDemo.id {
+            return selectedProfile
+        }
+
         guard let type = stringValue(for: .vehicleType) else {
             return PorscheParameters.taycanGen1
         }

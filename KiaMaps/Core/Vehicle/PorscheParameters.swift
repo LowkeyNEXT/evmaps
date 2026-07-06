@@ -40,6 +40,10 @@ enum PorscheParameters: VehicleParameters {
         541  // WLTP range for Taycan Gen1
     }
 
+    var maximumBatteryCapacityKilowattHours: Double {
+        90.25
+    }
+
     /// Unique identifier for this vehicle's consumption model
     /// Used for server-side route calculations and energy estimations
     var consumptionModelId: Int {

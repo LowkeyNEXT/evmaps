@@ -40,6 +40,16 @@ class CarListHandler: NSObject, INListCarsIntentHandling, Handler {
     /// - Parameters:
     ///   - intent: The intent requesting vehicle list
     func handle(intent: INListCarsIntent) async -> INListCarsIntentResponse {
+        MapsIntentDebugLog.append(event: "List cars request", detail: "Apple Maps requested available cars")
+        #if DEBUG
+        let demoResult = INListCarsIntentResponse(code: .success, userActivity: nil)
+        let car = DemoVehicleProvider.car()
+        demoResult.cars = [car]
+        logDebug("Loaded debug demo car for Maps", category: .vehicle)
+        MapsIntentDebugLog.append(event: "List cars response", detail: car.mapsDebugSummary)
+        return demoResult
+        #endif
+
         await credentialsHandler.continueOrWaitForCredentials()
         let result: INListCarsIntentResponse
 
@@ -49,6 +59,10 @@ class CarListHandler: NSObject, INListCarsIntentHandling, Handler {
             result = .init(code: .success, userActivity: nil)
             result.cars = cars.map { $0.car(with: api.configuration) }
             logDebug("Loaded \(cars.count) cars", category: .vehicle)
+            MapsIntentDebugLog.append(
+                event: "List cars response",
+                detail: result.cars?.map(\.mapsDebugSummary).joined(separator: " | ") ?? "No cars"
+            )
         } catch let error  {
             if let error = error as? ApiError {
                 switch error {
@@ -101,5 +115,16 @@ extension Vehicle {
             car.setMaximumPower(.init(value: power, unit: .kilowatts), for: connector)
         }
         return car
+    }
+}
+
+private extension INCar {
+    var mapsDebugSummary: String {
+        let connectorText = supportedChargingConnectors.map { connector in
+            let power = maximumPower(for: connector)?.converted(to: .kilowatts).value
+            let powerText = power.map { "\($0.formatted(.number.precision(.fractionLength(1)))) kW" } ?? "nil"
+            return "\(connector)=\(powerText)"
+        }.joined(separator: ",")
+        return "id=\(carIdentifier ?? "nil"), displayName=\(displayName ?? "nil"), year=\(year ?? "nil"), make=\(make ?? "nil"), model=\(model ?? "nil"), connectors=[\(connectorText)]"
     }
 }

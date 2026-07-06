@@ -71,6 +71,10 @@ class GetCarPowerLevelStatusHandler: NSObject, INGetCarPowerLevelStatusIntentHan
             }
             result = status.state.toIntentResponse(carId: carId, vehicleParameters: vehicleParameters, lastUpdateDate: status.lastUpdateTime)
             logDebug("Loaded car status '\(status.state.vehicle.green.batteryManagement.batteryRemain.ratio)'", category: .vehicle)
+            MapsIntentDebugLog.append(
+                event: "API power response",
+                detail: "carId=\(carId), soc=\(status.state.vehicle.green.batteryManagement.batteryRemain.ratio)%, dte=\(status.state.vehicle.drivetrain.fuelSystem.dte.total), updated=\(status.lastUpdateTime)"
+            )
         } catch {
             if let error = error as? ApiError {
                 switch error {
@@ -92,9 +96,14 @@ class GetCarPowerLevelStatusHandler: NSObject, INGetCarPowerLevelStatusIntentHan
             logDebug("Returning cached data for failure", category: .vehicle)
             manager.restoreOutdatedData()
             if let cachedData = try? manager.vehicleState {
+                MapsIntentDebugLog.append(
+                    event: "API failure cache fallback",
+                    detail: "carId=\(carId), soc=\(cachedData.state.vehicle.green.batteryManagement.batteryRemain.ratio)%, dte=\(cachedData.state.vehicle.drivetrain.fuelSystem.dte.total), updated=\(cachedData.lastUpdateTime), error=\(error.localizedDescription)"
+                )
                 return cachedData.state.toIntentResponse(carId: carId, vehicleParameters: vehicleParameters, lastUpdateDate: cachedData.lastUpdateTime)
             } else {
                 logDebug("No cached data, returning failure", category: .vehicle)
+                MapsIntentDebugLog.append(event: "API failure no cache", detail: "carId=\(carId), error=\(error.localizedDescription)")
                 manager.removeLastUpdateDate()
             }
         }
@@ -107,9 +116,18 @@ class GetCarPowerLevelStatusHandler: NSObject, INGetCarPowerLevelStatusIntentHan
     ///   - completion: Completion handler for the response
     func handle(intent: INGetCarPowerLevelStatusIntent) async -> INGetCarPowerLevelStatusIntentResponse {
         guard let identifier = intent.carName?.vocabularyIdentifier, let carId = UUID(uuidString: identifier) else {
+            MapsIntentDebugLog.append(event: "Power request rejected", detail: "Missing or invalid carName identifier: \(intent.carName?.spokenPhrase ?? "nil")")
             return .init(code: .failureRequiringAppLaunch, userActivity: nil)
         }
         manager = VehicleManager(id: carId)
+        MapsIntentDebugLog.append(event: "Power request", detail: "carId=\(carId), spoken=\(intent.carName?.spokenPhrase ?? "nil")")
+
+        #if DEBUG
+        if DemoVehicleProvider.isDemoCar(carId) {
+            logDebug("Handler: Returning debug demo car status", category: .vehicle)
+            return await DemoVehicleProvider.refreshedPowerLevelResponse()
+        }
+        #endif
 
         if mock {
             do {
@@ -118,6 +136,7 @@ class GetCarPowerLevelStatusHandler: NSObject, INGetCarPowerLevelStatusIntentHan
 
             }
             logDebug("Handler: Returning mocking data", category: .vehicle)
+            MapsIntentDebugLog.append(event: "Mock power response", detail: "carId=\(carId), using lowBatteryPreview")
             return VehicleStateResponse.lowBatteryPreview.state.toIntentResponse(carId: carId, vehicleParameters: vehicleParameters, lastUpdateDate: .now - 1 * 60)
         } else if let cachedData = try? manager.vehicleState {
             // Use data from cache
@@ -133,9 +152,14 @@ class GetCarPowerLevelStatusHandler: NSObject, INGetCarPowerLevelStatusIntentHan
             }
 
             logDebug("Handler: Use cached data", category: .vehicle)
+            MapsIntentDebugLog.append(
+                event: "Cached API power response",
+                detail: "carId=\(carId), soc=\(cachedData.state.vehicle.green.batteryManagement.batteryRemain.ratio)%, dte=\(cachedData.state.vehicle.drivetrain.fuelSystem.dte.total), updated=\(cachedData.lastUpdateTime)"
+            )
             return cachedData.state.toIntentResponse(carId: carId, vehicleParameters: vehicleParameters, lastUpdateDate: cachedData.lastUpdateTime)
         } else {
             // Get data from server
+            MapsIntentDebugLog.append(event: "API power fetch", detail: "carId=\(carId), no cache")
             await credentialsHandler.continueOrWaitForCredentials()
             return await fetchCarStatus(carId: carId)
         }
@@ -151,15 +175,32 @@ class GetCarPowerLevelStatusHandler: NSObject, INGetCarPowerLevelStatusIntentHan
         
         guard let identifier = intent.carName?.vocabularyIdentifier, let carId = UUID(uuidString: identifier) else {
             logError("Updater: Failed to find car name '\(intent.carName?.spokenPhrase ?? "Unknown")'", category: .vehicle)
+            MapsIntentDebugLog.append(event: "Update stream rejected", detail: "Missing or invalid carName identifier: \(intent.carName?.spokenPhrase ?? "nil")")
             observer.didUpdate(getCarPowerLevelStatus: .init(code: .failureRequiringAppLaunch, userActivity: nil))
             return
         }
         
         manager = VehicleManager(id: carId)
+        MapsIntentDebugLog.append(event: "Update stream start", detail: "carId=\(carId), spoken=\(intent.carName?.spokenPhrase ?? "nil")")
+
+        #if DEBUG
+        if DemoVehicleProvider.isDemoCar(carId) {
+            logDebug("Updater: Sending debug demo car status", category: .vehicle)
+            Task {
+                let response = await DemoVehicleProvider.refreshedPowerLevelResponse()
+                observer.didUpdate(getCarPowerLevelStatus: response)
+            }
+            return
+        }
+        #endif
         
         // Send initial update from cached data immediately
         if let cachedData = try? manager.vehicleState {
             logDebug("Updater: Sending initial update from cached data", category: .vehicle)
+            MapsIntentDebugLog.append(
+                event: "Update stream cache response",
+                detail: "carId=\(carId), soc=\(cachedData.state.vehicle.green.batteryManagement.batteryRemain.ratio)%, dte=\(cachedData.state.vehicle.drivetrain.fuelSystem.dte.total), updated=\(cachedData.lastUpdateTime)"
+            )
             let response = cachedData.state.toIntentResponse(carId: carId, vehicleParameters: vehicleParameters, lastUpdateDate: .now - 1 * 60)
             observer.didUpdate(getCarPowerLevelStatus: response)
         }
@@ -178,6 +219,10 @@ class GetCarPowerLevelStatusHandler: NSObject, INGetCarPowerLevelStatusIntentHan
                     guard let self = self else { return }
 
                     logDebug("Updater: Received MQTT update", category: .mqtt)
+                    MapsIntentDebugLog.append(
+                        event: "MQTT power update",
+                        detail: "carId=\(carId), soc=\(mqttStatus.state.vehicle.green.batteryManagement.batteryRemain.ratio)%, dte=\(mqttStatus.state.vehicle.drivetrain.fuelSystem.dte.total), updated=\(mqttStatus.lastUpdateTime)"
+                    )
 
                     let response = mqttStatus.state.toIntentResponse(
                         carId: carId,
@@ -350,4 +395,3 @@ extension VehicleStateWrapper {
         return result
     }
 }
-

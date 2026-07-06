@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		807D0D032E4BECC700B40963 /* CocoaMQTT in Frameworks */ = {isa = PBXBuildFile; productRef = 807D0D022E4BECC700B40963 /* CocoaMQTT */; };
 		80BC37DE2E4BF24F0025FC66 /* CocoaMQTT in Frameworks */ = {isa = PBXBuildFile; productRef = 80BC37DD2E4BF24F0025FC66 /* CocoaMQTT */; };
+		80C72B012E54000100BBCCAA /* BetterBlueKit in Frameworks */ = {isa = PBXBuildFile; productRef = 80C72B002E54000100BBCCAA /* BetterBlueKit */; };
 		CD05A6F122E8E4EA00F93F50 /* MapKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CD05A6F022E8E4EA00F93F50 /* MapKit.framework */; };
 		CD05A6F922E9018D00F93F50 /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = CD05A6F822E9018D00F93F50 /* README.md */; };
 		CDA8AD8C22E8CF7D00B1EAF8 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = CDA8AD8B22E8CF7D00B1EAF8 /* Assets.xcassets */; };
@@ -106,6 +107,10 @@
 				Authorization/Keychain.swift,
 				Authorization/LoginCredentialsManager.swift,
 				Bluetooth/BluetoothManager.swift,
+				DataSources/KiaConnectUSACredentials.swift,
+				DataSources/MapsIntentDebugLog.swift,
+				DataSources/SharedGalaxyTelemetryClient.swift,
+				DataSources/VehicleTelemetry.swift,
 				Encryption/RSAEncryptionService.swift,
 				LocalServer/LocalCredentialClient.swift,
 				LocalServer/LocalCredentialServer.swift,
@@ -160,6 +165,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				807D0D032E4BECC700B40963 /* CocoaMQTT in Frameworks */,
+				80C72B012E54000100BBCCAA /* BetterBlueKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -288,6 +294,7 @@
 			name = KiaMaps;
 			packageProductDependencies = (
 				807D0D022E4BECC700B40963 /* CocoaMQTT */,
+				80C72B002E54000100BBCCAA /* BetterBlueKit */,
 			);
 			productName = ride2;
 			productReference = CDA8AD8122E8CF7B00B1EAF8 /* KiaMaps.app */;
@@ -382,6 +389,7 @@
 			packageReferences = (
 				807D0D012E4BECC700B40963 /* XCRemoteSwiftPackageReference "CocoaMQTT" */,
 				80BC37DC2E4BF2240025FC66 /* XCRemoteSwiftPackageReference "CocoaAsyncSocket" */,
+				80C72AFF2E54000100BBCCAA /* XCRemoteSwiftPackageReference "BetterBlueKit" */,
 			);
 			productRefGroup = CDA8AD8222E8CF7B00B1EAF8 /* Products */;
 			projectDirPath = "";
@@ -500,6 +508,7 @@
 /* Begin XCBuildConfiguration section */
 		803D46832E2E7413003EFC10 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 8057CBEC2E2A93EE002BBB52 /* Signing.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				BUNDLE_LOADER = "$(TEST_HOST)";
@@ -532,6 +541,7 @@
 		};
 		803D46842E2E7413003EFC10 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 8057CBEC2E2A93EE002BBB52 /* Signing.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				BUNDLE_LOADER = "$(TEST_HOST)";
@@ -687,6 +697,7 @@
 		};
 		CDA8AD9422E8CF7D00B1EAF8 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 8057CBEC2E2A93EE002BBB52 /* Signing.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = KiaMaps/KiaMaps.entitlements;
@@ -709,6 +720,7 @@
 		};
 		CDA8AD9522E8CF7D00B1EAF8 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 8057CBEC2E2A93EE002BBB52 /* Signing.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = KiaMaps/KiaMaps.entitlements;
@@ -731,6 +743,7 @@
 		};
 		CDA8ADB522E8CF8700B1EAF8 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 8057CBEC2E2A93EE002BBB52 /* Signing.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = KiaExtensionUI/KiaExtensionUI.entitlements;
 				INFOPLIST_FILE = KiaExtensionUI/Info.plist;
@@ -750,6 +763,7 @@
 		};
 		CDA8ADB622E8CF8700B1EAF8 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 8057CBEC2E2A93EE002BBB52 /* Signing.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = KiaExtensionUI/KiaExtensionUI.entitlements;
 				INFOPLIST_FILE = KiaExtensionUI/Info.plist;
@@ -769,6 +783,7 @@
 		};
 		CDA8ADB822E8CF8700B1EAF8 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 8057CBEC2E2A93EE002BBB52 /* Signing.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = KiaExtension/KiaExtension.entitlements;
 				INFOPLIST_FILE = KiaExtension/Info.plist;
@@ -788,6 +803,7 @@
 		};
 		CDA8ADB922E8CF8700B1EAF8 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 8057CBEC2E2A93EE002BBB52 /* Signing.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = KiaExtension/KiaExtension.entitlements;
 				INFOPLIST_FILE = KiaExtension/Info.plist;
@@ -880,6 +896,14 @@
 				minimumVersion = 7.6.5;
 			};
 		};
+		80C72AFF2E54000100BBCCAA /* XCRemoteSwiftPackageReference "BetterBlueKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/schmidtwmark/BetterBlueKit.git";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -902,6 +926,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 807D0D012E4BECC700B40963 /* XCRemoteSwiftPackageReference "CocoaMQTT" */;
 			productName = CocoaMQTT;
+		};
+		80C72B002E54000100BBCCAA /* BetterBlueKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 80C72AFF2E54000100BBCCAA /* XCRemoteSwiftPackageReference "BetterBlueKit" */;
+			productName = BetterBlueKit;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

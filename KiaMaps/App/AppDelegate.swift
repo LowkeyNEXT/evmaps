@@ -167,6 +167,9 @@ struct Application: App {
     
     let configuration: AppConfiguration.Type = AppConfiguration.self
     @State private var navigationPath: [NavigationDestination] = []
+    @State private var isShowingVehicleDataSources = false
+    @State private var deepLinkAlertMessage = ""
+    @State private var isShowingDeepLinkAlert = false
 
     var body: some Scene {
         WindowGroup {
@@ -177,6 +180,24 @@ struct Application: App {
                     RootView(configuration: configuration, navigationPath: $navigationPath)
                 }
                 .environmentObject(backgroundManager)
+                .sheet(isPresented: $isShowingVehicleDataSources) {
+                    VehicleDataSourcesView()
+                }
+                .alert("Vehicle Link", isPresented: $isShowingDeepLinkAlert) {
+                    Button("OK", role: .cancel) {}
+                } message: {
+                    Text(deepLinkAlertMessage)
+                }
+                .onOpenURL { url in
+                    if GalaxyVehicleDeepLinkHandler.handle(url) {
+                        logInfo("Imported Galaxy vehicle data source URL", category: .app)
+                        isShowingVehicleDataSources = true
+                    } else {
+                        logWarning("Unhandled URL: \(url.absoluteString)", category: .app)
+                        deepLinkAlertMessage = "KiaMaps could not import this Galaxy vehicle link."
+                        isShowingDeepLinkAlert = true
+                    }
+                }
             }
         }
         .onChange(of: scenePhase) { _, newPhase in

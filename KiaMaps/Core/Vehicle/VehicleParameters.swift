@@ -28,6 +28,10 @@ protocol VehicleParameters {
     /// Used for initial route planning estimations
     var maximumDistance: Double { get }
 
+    /// Usable high-voltage battery capacity in kilowatt-hours.
+    /// Used when a live source reports percentage but not absolute energy.
+    var maximumBatteryCapacityKilowattHours: Double { get }
+
     /// Unique identifier for the vehicle's energy consumption model
     /// This ID is sent to the server for route calculations
     var consumptionModelId: Int { get }

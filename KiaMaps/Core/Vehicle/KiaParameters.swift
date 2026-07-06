@@ -19,25 +19,37 @@ enum KiaParameters: String, VehicleParameters {
     /// - Parameter connector: The charging connector type
     /// - Returns: Maximum power in kilowatts, or nil if connector not supported
     func maximumPower(for connector: INCar.ChargingConnectorType) -> Double? {
-        if connector == .mennekes {
-            return 11.0  // AC charging: 11 kW (3-phase 16A)
-        } else if connector == .ccs2 {
-            return 233.0  // DC fast charging: Up to 233 kW peak (E-GMP platform)
-        } else {
-            return nil
+        if connector == .j1772 {
+            return 10.9
+        } else if connector == .ccs1 {
+            return 210.0
+        } else if #available(iOS 17.4, *) {
+            if connector == .nacsAC {
+                return 10.9
+            } else if connector == .nacsDC {
+                return 210.0
+            }
         }
+        return nil
     }
 
     /// Supported charging connector types for this vehicle
     /// - Mennekes (Type 2): Standard AC charging connector in Europe
     /// - CCS2: Combined Charging System for DC fast charging
     var supportedChargingConnectors: [INCar.ChargingConnectorType] {
-        [.mennekes, .ccs2]
+        if #available(iOS 17.4, *) {
+            return [.nacsAC, .nacsDC, .j1772, .ccs1]
+        }
+        return [.j1772, .ccs1]
     }
 
     /// Maximum driving range in kilometers (WLTP standard)
     var maximumDistance: Double {
-        505  // WLTP range for EV9 GT-Line AWD (top trim)
+        450.6  // 280 miles EPA-estimated range for 2026 US EV9 GT-Line AWD
+    }
+
+    var maximumBatteryCapacityKilowattHours: Double {
+        99.8
     }
 
     /// Unique identifier for this vehicle's consumption model
