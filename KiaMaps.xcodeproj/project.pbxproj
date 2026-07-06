@@ -111,6 +111,7 @@
 				DataSources/MapsIntentDebugLog.swift,
 				DataSources/SharedGalaxyTelemetryClient.swift,
 				DataSources/VehicleTelemetry.swift,
+				DataSources/VehicleTelemetryRefreshCoordinator.swift,
 				Encryption/RSAEncryptionService.swift,
 				LocalServer/LocalCredentialClient.swift,
 				LocalServer/LocalCredentialServer.swift,

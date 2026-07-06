@@ -59,21 +59,12 @@ enum DemoVehicleProvider {
     }
 
     static func refreshedPowerLevelResponse() async -> INGetCarPowerLevelStatusIntentResponse {
-        let preferences = VehicleDataSourcePreferencesCache.load()
-        if !VehicleTelemetryCache.shouldRefresh(.starPilotGalaxy, preferences: preferences),
-           let telemetry = VehicleTelemetryCache.bestStored(preferences: preferences) {
-            MapsIntentDebugLog.append(event: "Galaxy refresh throttled", detail: telemetry.mapsDebugSummary)
+        if let telemetry = await VehicleTelemetryRefreshCoordinator.bestAvailableOrRefresh(reason: "demo power request") {
+            MapsIntentDebugLog.append(event: "Demo response from telemetry", detail: telemetry.mapsDebugSummary)
             return powerLevelResponse(from: telemetry)
         }
 
-        do {
-            let telemetry = try await SharedGalaxyTelemetryClient.refreshStoredTelemetry()
-            MapsIntentDebugLog.append(event: "Demo response from Galaxy refresh", detail: telemetry.mapsDebugSummary)
-            return powerLevelResponse(from: telemetry)
-        } catch {
-            MapsIntentDebugLog.append(event: "Galaxy refresh unavailable", detail: error.localizedDescription)
-            return powerLevelResponse()
-        }
+        return powerLevelResponse()
     }
 
     private static func powerLevelResponse(from telemetry: OBDTelemetry) -> INGetCarPowerLevelStatusIntentResponse {

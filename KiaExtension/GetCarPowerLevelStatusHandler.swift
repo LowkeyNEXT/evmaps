@@ -138,7 +138,14 @@ class GetCarPowerLevelStatusHandler: NSObject, INGetCarPowerLevelStatusIntentHan
             logDebug("Handler: Returning mocking data", category: .vehicle)
             MapsIntentDebugLog.append(event: "Mock power response", detail: "carId=\(carId), using lowBatteryPreview")
             return VehicleStateResponse.lowBatteryPreview.state.toIntentResponse(carId: carId, vehicleParameters: vehicleParameters, lastUpdateDate: .now - 1 * 60)
-        } else if let cachedData = try? manager.vehicleState {
+        }
+
+        if let telemetry = await VehicleTelemetryRefreshCoordinator.bestAvailableOrRefresh(reason: "power request carId=\(carId)") {
+            logDebug("Handler: Returning shared telemetry from \(telemetry.source.displayName)", category: .vehicle)
+            return telemetry.toIntentResponse(carId: carId, vehicleParameters: vehicleParameters)
+        }
+
+        if let cachedData = try? manager.vehicleState {
             // Use data from cache
             if cachedData.lastUpdateTime + 5 * 60 < Date.now {
                 logDebug("Handler: Old cache, updating cached data", category: .vehicle)
@@ -193,6 +200,14 @@ class GetCarPowerLevelStatusHandler: NSObject, INGetCarPowerLevelStatusIntentHan
             return
         }
         #endif
+
+        Task { [weak self] in
+            guard let self else { return }
+            if let telemetry = await VehicleTelemetryRefreshCoordinator.bestAvailableOrRefresh(reason: "update stream carId=\(carId)") {
+                let response = telemetry.toIntentResponse(carId: carId, vehicleParameters: self.vehicleParameters)
+                observer.didUpdate(getCarPowerLevelStatus: response)
+            }
+        }
         
         // Send initial update from cached data immediately
         if let cachedData = try? manager.vehicleState {
@@ -344,6 +359,106 @@ class GetCarPowerLevelStatusHandler: NSObject, INGetCarPowerLevelStatusIntentHan
                 observer.didUpdate(getCarPowerLevelStatus: response)
             }
         }
+    }
+}
+
+private extension VehicleTelemetrySnapshot {
+    func toIntentResponse(carId: UUID, vehicleParameters: VehicleParameters) -> INGetCarPowerLevelStatusIntentResponse {
+        let batteryPercent = stateOfChargePercent ?? 65
+        let range = estimatedRangeKilometers ?? distanceToEmptyKilometers ?? vehicleParameters.maximumDistance * (batteryPercent / 100.0)
+        let maximumBatteryCapacity = Measurement(
+            value: maximumBatteryCapacityKilowattHours ?? vehicleParameters.maximumBatteryCapacityKilowattHours,
+            unit: UnitEnergy.kilowattHours
+        )
+        let currentBatteryCapacity = Measurement(
+            value: maximumBatteryCapacity.value * batteryPercent / 100.0,
+            unit: UnitEnergy.kilowattHours
+        )
+        let dateComponents = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute, .second], from: updatedAt)
+
+        let result = INGetCarPowerLevelStatusIntentResponse(code: .success, userActivity: nil)
+        result.carIdentifier = carId.uuidString
+        result.dateOfLastStateUpdate = dateComponents
+        result.consumptionFormulaArguments = vehicleParameters.consumptionFormulaArguments()
+        result.chargingFormulaArguments = vehicleParameters.chargingFormulaArguments(maximumBatteryCapacity: maximumBatteryCapacity.value, unit: .kilowattHours)
+        result.maximumDistance = Measurement(value: vehicleParameters.maximumDistance, unit: UnitLength.kilometers)
+        result.distanceRemaining = Measurement(value: range, unit: UnitLength.kilometers)
+        result.maximumDistanceElectric = Measurement(value: vehicleParameters.maximumDistance, unit: UnitLength.kilometers)
+        result.distanceRemainingElectric = Measurement(value: range, unit: UnitLength.kilometers)
+        result.minimumBatteryCapacity = Measurement(value: 0, unit: UnitEnergy.kilowattHours)
+        result.currentBatteryCapacity = currentBatteryCapacity
+        result.maximumBatteryCapacity = maximumBatteryCapacity
+        result.chargePercentRemaining = Float(batteryPercent / 100.0)
+        result.charging = isCharging ?? false
+        result.activeConnector = activeConnector(vehicleParameters: vehicleParameters)
+        result.minutesToFull = minutesToFull ?? estimatedMinutesToFull(
+            batteryPercent: batteryPercent,
+            maximumBatteryCapacityKilowattHours: maximumBatteryCapacity.value,
+            chargingPowerKilowatts: chargingPowerKilowatts
+        )
+
+        MapsIntentDebugLog.append(event: "Shared telemetry power response", detail: responseSummary(result))
+        return result
+    }
+
+    func activeConnector(vehicleParameters: VehicleParameters) -> INCar.ChargingConnectorType? {
+        guard isCharging == true || isPluggedIn == true else {
+            return nil
+        }
+
+        if let connector = activeConnector?.lowercased() ?? plugPowerType?.lowercased() {
+            if #available(iOS 17.4, *) {
+                if connector.contains("nacsdc") || connector.contains("nacs-dc") {
+                    return .nacsDC
+                }
+                if connector.contains("nacsac") || connector.contains("nacs-ac") {
+                    return .nacsAC
+                }
+            }
+            if connector.contains("ccs1") {
+                return .ccs1
+            }
+            if connector.contains("ccs2") {
+                return .ccs2
+            }
+            if connector.contains("j1772") {
+                return .j1772
+            }
+        }
+
+        if let power = chargingPowerKilowatts, power > 25 {
+            if #available(iOS 17.4, *), vehicleParameters.supportedChargingConnectors.contains(.nacsDC) {
+                return .nacsDC
+            }
+            return vehicleParameters.supportedChargingConnectors.first { $0 == .ccs1 || $0 == .ccs2 }
+        }
+
+        if #available(iOS 17.4, *), vehicleParameters.supportedChargingConnectors.contains(.nacsAC) {
+            return .nacsAC
+        }
+        return vehicleParameters.supportedChargingConnectors.first { $0 == .j1772 || $0 == .mennekes }
+    }
+
+    func estimatedMinutesToFull(
+        batteryPercent: Double,
+        maximumBatteryCapacityKilowattHours: Double,
+        chargingPowerKilowatts: Double?
+    ) -> Int? {
+        guard let chargingPowerKilowatts, chargingPowerKilowatts > 0.1 else {
+            return nil
+        }
+        let remainingKilowattHours = max(0, maximumBatteryCapacityKilowattHours * (100 - batteryPercent) / 100)
+        return Int((remainingKilowattHours / chargingPowerKilowatts * 60).rounded())
+    }
+
+    func responseSummary(_ response: INGetCarPowerLevelStatusIntentResponse) -> String {
+        let percent = response.chargePercentRemaining.map { "\(Int(($0 * 100).rounded()))%" } ?? "nil"
+        let range = response.distanceRemainingElectric?.converted(to: .kilometers).value
+        let rangeText = range.map { "\(($0).formatted(.number.precision(.fractionLength(1)))) km" } ?? "nil"
+        let charging = response.charging.map { String($0) } ?? "nil"
+        let connector = response.activeConnector.map { String(describing: $0) } ?? "nil"
+        let minutes = response.minutesToFull.map(String.init) ?? "nil"
+        return "source=\(source.displayName), soc=\(percent), range=\(rangeText), charging=\(charging), connector=\(connector), minutesToFull=\(minutes), updated=\(updatedAt)"
     }
 }
 
