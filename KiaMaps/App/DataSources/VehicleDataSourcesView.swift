@@ -14,6 +14,7 @@ struct VehicleDataSourcesView: View {
     @State private var isShowingOBDLink = false
     @StateObject private var kiaConnectManager = KiaConnectUSAManager()
     @StateObject private var galaxyManager = GalaxyVehicleDataSourceManager()
+    @StateObject private var obdManager = OBDLinkBLEManager.shared
     @State private var mfaCode = ""
     @State private var didAutoRefreshGalaxy = false
     @State private var mapsDebugLogs = MapsIntentDebugLog.latest()
@@ -255,9 +256,20 @@ struct VehicleDataSourcesView: View {
                 Label("Pair or Refresh OBDLink", systemImage: "dot.radiowaves.left.and.right")
             }
 
+            LabeledContent("Status", value: obdManager.state.title)
+
             if let telemetry = VehicleTelemetryCache.latest(for: .obdLinkCX) {
                 LabeledContent("Last Adapter", value: telemetry.adapterName ?? "OBDLink CX")
                 LabeledContent("Last OBD Read", value: telemetry.updatedAt.formatted(date: .abbreviated, time: .shortened))
+                if let percent = telemetry.stateOfChargePercent {
+                    LabeledContent("Battery", value: "\(percent.formatted(.number.precision(.fractionLength(0))))%")
+                }
+                if let range = telemetry.estimatedRangeKilometers {
+                    LabeledContent("Range", value: measurementSystem.formattedDistance(kilometers: range))
+                }
+            } else {
+                Text("No cached OBDLink telemetry yet.")
+                    .foregroundStyle(.secondary)
             }
         } header: {
             Text("OBDLink CX")
@@ -454,6 +466,13 @@ struct VehicleDataSourcesView: View {
                     ProgressView()
                 }
             }
+
+            Button {
+                Task { await galaxyManager.discoverAndConnectLocalGalaxy() }
+            } label: {
+                Label("Find Galaxy on LAN", systemImage: "dot.radiowaves.left.and.right")
+            }
+            .disabled(galaxyManager.isLoading)
 
             Text(galaxyManager.statusMessage)
                 .foregroundStyle(.secondary)
@@ -659,10 +678,14 @@ struct VehicleDataSourcesView: View {
     }
 
     private func autoRefreshGalaxyIfConfigured() async {
-        guard !didAutoRefreshGalaxy, galaxyManager.credentials.isConfigured else {
+        guard !didAutoRefreshGalaxy else {
             return
         }
         didAutoRefreshGalaxy = true
+        if !galaxyManager.credentials.isConfigured {
+            await galaxyManager.discoverAndConnectLocalGalaxy()
+            return
+        }
         guard VehicleTelemetryCache.shouldRefresh(.starPilotGalaxy, preferences: preferences) else {
             return
         }

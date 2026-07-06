@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct OBDLinkView: View {
-    @StateObject private var manager = OBDLinkBLEManager()
+    @StateObject private var manager = OBDLinkBLEManager.shared
 
     var body: some View {
         NavigationStack {

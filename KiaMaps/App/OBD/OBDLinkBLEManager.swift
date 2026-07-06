@@ -9,6 +9,8 @@ import CoreBluetooth
 import Foundation
 
 final class OBDLinkBLEManager: NSObject, ObservableObject {
+    static let shared = OBDLinkBLEManager()
+
     enum ConnectionState: Equatable {
         case idle
         case scanning

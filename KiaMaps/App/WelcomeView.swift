@@ -17,6 +17,7 @@ struct WelcomeView: View {
     @State private var vehicleProfile = VehicleProfileStore.selected()
     @State private var snapshots = VehicleTelemetryCache.allLatest()
     @StateObject private var galaxyManager = GalaxyVehicleDataSourceManager()
+    @StateObject private var obdManager = OBDLinkBLEManager.shared
     @AppStorage("vehicleProfile.measurementSystem") private var measurementSystemRaw = VehicleProfileMeasurementSystem.us.rawValue
     
     var body: some View {
@@ -226,14 +227,16 @@ struct WelcomeView: View {
                     .font(KiaDesign.Typography.bodySmall)
                     .foregroundStyle(KiaDesign.Colors.textPrimary)
 
-                Text(sourceDetail(snapshot))
+                Text(sourceDetail(source, snapshot))
                     .font(KiaDesign.Typography.caption)
                     .foregroundStyle(KiaDesign.Colors.textSecondary)
             }
 
             Spacer()
 
-            if isSelected {
+            if source == .obdLinkCX, let badge = obdConnectionBadge {
+                statusBadge(badge.text, color: badge.color)
+            } else if isSelected {
                 statusBadge("Using", color: KiaDesign.Colors.success)
             } else if snapshot?.isFresh == true {
                 statusBadge("Ready", color: KiaDesign.Colors.primary)
@@ -316,7 +319,20 @@ struct WelcomeView: View {
         return "Idle"
     }
 
-    private func sourceDetail(_ snapshot: VehicleTelemetrySnapshot?) -> String {
+    private func sourceDetail(_ source: VehicleTelemetrySourceKind, _ snapshot: VehicleTelemetrySnapshot?) -> String {
+        if source == .obdLinkCX {
+            let connection = obdManager.state.title
+            guard let snapshot else {
+                return connection
+            }
+            let telemetry = sourceTelemetryDetail(snapshot)
+            return telemetry.isEmpty ? connection : "\(connection) · \(telemetry)"
+        }
+
+        return sourceTelemetryDetail(snapshot)
+    }
+
+    private func sourceTelemetryDetail(_ snapshot: VehicleTelemetrySnapshot?) -> String {
         guard let snapshot else {
             return "No cached data"
         }
@@ -326,6 +342,21 @@ struct WelcomeView: View {
         let updated = snapshot.updatedAt.formatted(date: .omitted, time: .shortened)
 
         return [battery, range == "--" ? nil : range, updated].compactMap { $0 }.joined(separator: " · ")
+    }
+
+    private var obdConnectionBadge: (text: String, color: Color)? {
+        switch obdManager.state {
+        case .idle:
+            return nil
+        case .scanning:
+            return ("Scanning", KiaDesign.Colors.primary)
+        case .connecting:
+            return ("Connecting", KiaDesign.Colors.primary)
+        case .connected, .ready:
+            return ("Connected", KiaDesign.Colors.success)
+        case .failed:
+            return ("Error", KiaDesign.Colors.warning)
+        }
     }
 
     private func rangeSummary(for snapshot: VehicleTelemetrySnapshot) -> String {
@@ -355,11 +386,11 @@ struct WelcomeView: View {
     }
 
     private func refreshGalaxyIfConfigured() async {
-        guard galaxyManager.credentials.isConfigured else {
-            reloadHomeState()
-            return
+        if galaxyManager.credentials.isConfigured {
+            await galaxyManager.refresh()
+        } else {
+            await galaxyManager.discoverAndConnectLocalGalaxy()
         }
-        await galaxyManager.refresh()
         reloadHomeState()
     }
 }

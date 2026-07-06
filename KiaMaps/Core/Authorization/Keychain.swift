@@ -177,7 +177,7 @@ struct Keychain<Key: RawRepresentable> {
         }
 
         do {
-            return try JSONDecoders.default.decode(Content.self, from: data)
+            return try KeychainJSON.decode(Content.self, from: data)
         } catch {
             logError("Failed to decode value at path: \(String(describing: path)) from type Data: \(error.localizedDescription)", category: .keychain)
             return nil
@@ -199,6 +199,35 @@ struct Keychain<Key: RawRepresentable> {
 
         guard !ignoredStatuses.contains(status) else { return }
         logError("\(message), error: \(status)", category: .keychain)
+    }
+}
+
+private enum KeychainJSON {
+    static func decode<Content: Decodable>(_ type: Content.Type, from data: Data) throws -> Content {
+        let isoDecoder = JSONDecoder()
+        isoDecoder.dateDecodingStrategy = .iso8601
+
+        let deferredDecoder = JSONDecoder()
+        deferredDecoder.dateDecodingStrategy = .deferredToDate
+
+        let decoders = [
+            JSONDecoders.default,
+            isoDecoder,
+            deferredDecoder,
+        ]
+
+        var lastError: Error?
+        for decoder in decoders {
+            do {
+                return try decoder.decode(type, from: data)
+            } catch {
+                lastError = error
+            }
+        }
+
+        throw lastError ?? DecodingError.dataCorrupted(
+            DecodingError.Context(codingPath: [], debugDescription: "Unable to decode keychain value")
+        )
     }
 }
 

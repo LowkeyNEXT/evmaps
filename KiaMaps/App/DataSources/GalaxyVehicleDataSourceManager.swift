@@ -95,7 +95,7 @@ struct GalaxyVehicleCredentials: Codable, Equatable {
     }
 
     var isConfigured: Bool {
-        normalizedBaseURL != nil && !normalizedSessionToken.isEmpty
+        !orderedBaseURLs.isEmpty && !normalizedSessionToken.isEmpty
     }
 }
 
@@ -197,6 +197,30 @@ final class GalaxyVehicleDataSourceManager: ObservableObject {
         credentials = .empty
         GalaxyVehicleCredentialsCache.clear()
         statusMessage = "Galaxy settings removed"
+    }
+
+    func discoverAndConnectLocalGalaxy() async {
+        isLoading = true
+        statusMessage = "Looking for StarPilot Galaxy on your local network"
+        defer { isLoading = false }
+
+        do {
+            let baseURL = try await GalaxyBonjourDiscovery().discover()
+            let statusURL = endpointURL(baseURL: baseURL, path: "/api/galaxy/status")
+            let payload = try await fetchJSON(from: statusURL)
+            guard let iosConnectUrl = payload["iosConnectUrl"] as? String,
+                  let url = URL(string: iosConnectUrl),
+                  GalaxyVehicleDeepLinkHandler.handle(url)
+            else {
+                throw GalaxyVehicleError.invalidResponse
+            }
+
+            credentials = GalaxyVehicleCredentialsCache.load()
+            statusMessage = "Found StarPilot Galaxy on LAN"
+            await refresh()
+        } catch {
+            statusMessage = "Local Galaxy discovery failed: \(error.localizedDescription)"
+        }
     }
 
     func refresh() async {
@@ -398,6 +422,84 @@ final class GalaxyVehicleDataSourceManager: ObservableObject {
             return "Galaxy returned an invalid response."
         case .missingTelemetry:
             return "Galaxy responded, but did not include battery or range data."
+        }
+    }
+}
+
+private final class GalaxyBonjourDiscovery: NSObject, NetServiceBrowserDelegate, NetServiceDelegate {
+    private let browser = NetServiceBrowser()
+    private var continuation: CheckedContinuation<URL, Error>?
+    private var services: [NetService] = []
+    private var timeoutTask: Task<Void, Never>?
+
+    func discover(timeout: TimeInterval = 8) async throws -> URL {
+        try await withCheckedThrowingContinuation { continuation in
+            self.continuation = continuation
+            browser.delegate = self
+            browser.searchForServices(ofType: "_sp-galaxy._tcp.", inDomain: "local.")
+            timeoutTask = Task { [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                await MainActor.run {
+                    self?.finish(.failure(GalaxyDiscoveryError.notFound))
+                }
+            }
+        }
+    }
+
+    func netServiceBrowser(_: NetServiceBrowser, didFind service: NetService, moreComing _: Bool) {
+        services.append(service)
+        service.delegate = self
+        service.resolve(withTimeout: 5)
+    }
+
+    func netServiceDidResolveAddress(_ sender: NetService) {
+        guard let host = sender.hostName,
+              sender.port > 0,
+              let url = URL(string: "http://\(host):\(sender.port)")
+        else {
+            return
+        }
+        finish(.success(url))
+    }
+
+    func netService(_: NetService, didNotResolve _: [String: NSNumber]) {
+        if services.allSatisfy({ $0.hostName == nil }) {
+            finish(.failure(GalaxyDiscoveryError.notFound))
+        }
+    }
+
+    func netServiceBrowser(_: NetServiceBrowser, didNotSearch errorDict: [String: NSNumber]) {
+        finish(.failure(GalaxyDiscoveryError.searchFailed(errorDict.description)))
+    }
+
+    private func finish(_ result: Result<URL, Error>) {
+        guard let continuation else { return }
+        self.continuation = nil
+        timeoutTask?.cancel()
+        timeoutTask = nil
+        browser.stop()
+        services.forEach { $0.stop() }
+        services.removeAll()
+
+        switch result {
+        case .success(let url):
+            continuation.resume(returning: url)
+        case .failure(let error):
+            continuation.resume(throwing: error)
+        }
+    }
+}
+
+private enum GalaxyDiscoveryError: LocalizedError {
+    case notFound
+    case searchFailed(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .notFound:
+            return "No StarPilot Galaxy Bonjour service was found"
+        case .searchFailed(let detail):
+            return "Bonjour search failed: \(detail)"
         }
     }
 }

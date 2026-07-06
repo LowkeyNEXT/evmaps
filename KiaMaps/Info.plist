@@ -60,6 +60,7 @@
 		<string>_viwi._tcp</string>
 		<string>_bonjour._tcp</string>
 		<string>_lnp._tcp.</string>
+		<string>_sp-galaxy._tcp</string>
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Extension sharing</string>
