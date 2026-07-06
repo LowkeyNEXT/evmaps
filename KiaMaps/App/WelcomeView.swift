@@ -380,6 +380,7 @@ struct WelcomeView: View {
     }
 
     private func reloadHomeState() {
+        KiaConnectUSACredentialsCache.importStatusCache()
         preferences = VehicleDataSourcePreferencesCache.load()
         vehicleProfile = VehicleProfileStore.selected()
         snapshots = VehicleTelemetryCache.allLatest()

@@ -92,7 +92,11 @@ final class KiaConnectUSAManager: ObservableObject {
 
     init() {
         credentials = KiaConnectUSACredentialsCache.load()
-        statusMessage = credentials.hasStoredSession ? "Shared Kia Connect account available" : "Not connected"
+        if importSharedStatusCache() {
+            statusMessage = "Loaded shared Kia Connect vehicle status"
+        } else {
+            statusMessage = credentials.hasStoredSession ? "Shared Kia Connect account available" : "Not connected"
+        }
     }
 
     func saveCredentials() {
@@ -101,8 +105,13 @@ final class KiaConnectUSAManager: ObservableObject {
 
     func reloadSharedCredentials() {
         credentials = KiaConnectUSACredentialsCache.load()
-        if credentials.hasStoredCredentials {
+        let didLoadSharedStatus = importSharedStatusCache()
+        if credentials.hasStoredCredentials && didLoadSharedStatus {
+            statusMessage = "Loaded shared Kia Connect account and vehicle status"
+        } else if credentials.hasStoredCredentials {
             statusMessage = "Loaded shared Kia Connect credentials"
+        } else if didLoadSharedStatus {
+            statusMessage = "Loaded shared Kia Connect vehicle status"
         } else {
             statusMessage = "No shared Kia Connect credentials found"
         }
@@ -124,8 +133,10 @@ final class KiaConnectUSAManager: ObservableObject {
     func refresh(cached: Bool = true) async {
         saveCredentials()
 
-        guard credentials.isReadyForLogin else {
-            statusMessage = "Enter your Kia Connect email and password"
+        _ = importSharedStatusCache()
+
+        guard credentials.canAuthenticate else {
+            statusMessage = "Sign in with Kia Connect here or refresh shared credentials from Galaxy Nav"
             return
         }
 
@@ -233,7 +244,7 @@ final class KiaConnectUSAManager: ObservableObject {
     ) async {
         saveCredentials()
 
-        guard credentials.isReadyForLogin else {
+        guard credentials.canAuthenticate else {
             commandStatusMessage = "Enter Kia Connect credentials first"
             return
         }
@@ -318,16 +329,20 @@ private extension KiaConnectUSAManager {
 
     func makeAuthenticatedClient(status: (String) -> Void) async throws -> (client: any APIClientProtocol, authToken: AuthToken) {
         var client = try makeClient()
+        if let authToken = credentials.authSession?.authToken, authToken.isValid {
+            status("Using shared Kia Connect session")
+            return (client, authToken)
+        }
+
+        guard credentials.isReadyForLogin else {
+            throw KiaConnectUSALocalError.reauthenticationNeeded
+        }
+
         if credentials.deviceId == nil {
             status("Registering this device with Kia Connect")
             credentials.deviceId = try await client.registerDevice()
             saveCredentials()
             client = try makeClient()
-        }
-
-        if let authToken = credentials.authSession?.authToken, authToken.isValid {
-            status("Using shared Kia Connect session")
-            return (client, authToken)
         }
 
         status("Signing in to Kia Connect US")
@@ -367,6 +382,22 @@ private extension KiaConnectUSAManager {
         VehicleTelemetryCache.store(snapshot)
         latestTelemetry = snapshot
         statusMessage = "Kia Connect updated \(vehicle.model)"
+    }
+
+    @discardableResult
+    func importSharedStatusCache() -> Bool {
+        guard let sharedStatus = KiaConnectUSACredentialsCache.loadStatusCache(),
+              let snapshot = KiaConnectUSACredentialsCache.importStatusCache()
+        else {
+            return false
+        }
+
+        latestTelemetry = snapshot
+        if let vin = sharedStatus.vin, credentials.selectedVIN == nil {
+            credentials.selectedVIN = vin
+            saveCredentials()
+        }
+        return true
     }
 
     func selectedVehicle(from vehicles: [BetterBlueKit.Vehicle]) -> BetterBlueKit.Vehicle? {
@@ -460,12 +491,22 @@ private extension KiaConnectUSAManager {
     }
 
     func userFacingMessage(for error: Error) -> String {
+        if let localError = error as? KiaConnectUSALocalError {
+            switch localError {
+            case .reauthenticationNeeded:
+                return "Shared Kia Connect session expired. Re-authenticate in Kia Maps or Galaxy Nav."
+            }
+        }
+
         guard let apiError = error as? APIError else {
             return error.localizedDescription
         }
 
         switch apiError.errorType {
         case .invalidCredentials:
+            if credentials.hasStoredSession {
+                return "Kia Connect rejected the shared session. Re-authenticate in Kia Maps or Galaxy Nav."
+            }
             return "Kia Connect rejected the email or password."
         case .requiresMFA:
             return "Kia Connect requires verification."
@@ -496,6 +537,10 @@ private extension KiaConnectUSAManager {
     func notifyReauthNeeded(for error: APIError) async {
         await KiaConnectReauthNotifier.notify(reason: userFacingMessage(for: error))
     }
+}
+
+private enum KiaConnectUSALocalError: Error {
+    case reauthenticationNeeded
 }
 
 private extension KiaConnectUSAAuthSession {

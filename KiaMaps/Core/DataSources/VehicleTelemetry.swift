@@ -34,9 +34,9 @@ enum VehicleTelemetrySourceKind: String, Codable, CaseIterable, Identifiable {
         case .obdLinkCX:
             return 5 * 60
         case .kiaConnectUSA:
-            return 60 * 60
+            return 4 * 60 * 60
         case .starPilotGalaxy:
-            return 15 * 60
+            return 5 * 60
         case .demo:
             return 24 * 60 * 60
         }
@@ -65,11 +65,12 @@ struct VehicleDataSourcePreferences: Codable, Equatable {
     var preferredSource: VehicleTelemetrySourceKind
     var minimumRefreshIntervalSecondsBySource: [String: TimeInterval]
 
-    static let defaultMinimumRefreshIntervals = Dictionary(
-        uniqueKeysWithValues: VehicleTelemetrySourceKind.allCases.map {
-            ($0.rawValue, $0.freshnessInterval)
-        }
-    )
+    static let defaultMinimumRefreshIntervals: [String: TimeInterval] = [
+        VehicleTelemetrySourceKind.obdLinkCX.rawValue: 60,
+        VehicleTelemetrySourceKind.kiaConnectUSA.rawValue: 4 * 60 * 60,
+        VehicleTelemetrySourceKind.starPilotGalaxy.rawValue: 60,
+        VehicleTelemetrySourceKind.demo.rawValue: 24 * 60 * 60,
+    ]
 
     static let `default` = VehicleDataSourcePreferences(
         enabledSources: [.obdLinkCX, .kiaConnectUSA, .starPilotGalaxy, .demo],
@@ -173,7 +174,11 @@ private enum VehicleTelemetryKey: String {
 
 enum VehicleDataSourcePreferencesCache {
     static func load() -> VehicleDataSourcePreferences {
-        Keychain<VehicleTelemetryKey>.value(for: .preferences) ?? .default
+        var preferences: VehicleDataSourcePreferences = Keychain<VehicleTelemetryKey>.value(for: .preferences) ?? .default
+        if preferences.migrateLegacyDefaultRefreshIntervals() {
+            store(preferences)
+        }
+        return preferences
     }
 
     static func store(_ preferences: VehicleDataSourcePreferences) {
@@ -245,6 +250,27 @@ enum VehicleTelemetryCache {
     ) -> Bool {
         guard let snapshot = latest(for: source) else { return true }
         return Date().timeIntervalSince(snapshot.updatedAt) >= preferences.minimumRefreshInterval(for: source)
+    }
+}
+
+private extension VehicleDataSourcePreferences {
+    mutating func migrateLegacyDefaultRefreshIntervals() -> Bool {
+        [
+            migrateLegacyDefault(.obdLinkCX, from: 5 * 60),
+            migrateLegacyDefault(.kiaConnectUSA, from: 60 * 60),
+            migrateLegacyDefault(.starPilotGalaxy, from: 15 * 60),
+        ].contains(true)
+    }
+
+    mutating func migrateLegacyDefault(_ source: VehicleTelemetrySourceKind, from legacyValue: TimeInterval) -> Bool {
+        guard minimumRefreshIntervalSecondsBySource[source.rawValue] == legacyValue,
+              let newValue = Self.defaultMinimumRefreshIntervals[source.rawValue],
+              newValue != legacyValue
+        else {
+            return false
+        }
+        minimumRefreshIntervalSecondsBySource[source.rawValue] = newValue
+        return true
     }
 }
 

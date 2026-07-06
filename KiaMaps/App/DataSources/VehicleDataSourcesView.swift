@@ -138,7 +138,7 @@ struct VehicleDataSourcesView: View {
     private var sourceRateLimitSection: some View {
         SwiftUI.Section {
             ForEach(VehicleTelemetrySourceKind.allCases) { source in
-                Stepper(value: refreshLimitMinutesBinding(for: source), in: 1...120, step: 1) {
+                Stepper(value: refreshLimitMinutesBinding(for: source), in: 1...720, step: 1) {
                     LabeledContent(source.displayName) {
                         Text("\(Int(refreshLimitMinutes(for: source))) min")
                             .monospacedDigit()
