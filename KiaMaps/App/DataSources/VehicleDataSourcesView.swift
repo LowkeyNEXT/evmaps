@@ -268,6 +268,26 @@ struct VehicleDataSourcesView: View {
 
     private var kiaConnectSection: some View {
         SwiftUI.Section {
+            HStack {
+                Label(kiaConnectStatusTitle, systemImage: kiaConnectStatusSymbol)
+                    .foregroundStyle(kiaConnectStatusColor)
+
+                Spacer()
+
+                if kiaConnectManager.isLoading {
+                    ProgressView()
+                }
+            }
+
+            if kiaConnectManager.credentials.hasStoredCredentials {
+                LabeledContent("Account", value: kiaConnectManager.credentials.redactedUsername)
+                if kiaConnectManager.credentials.authSession?.isValid == true {
+                    LabeledContent("Session", value: "Active")
+                } else if kiaConnectManager.credentials.hasStoredSession {
+                    LabeledContent("Session", value: "Saved")
+                }
+            }
+
             TextField("Email", text: $kiaConnectManager.credentials.username)
                 .textContentType(.username)
                 .textInputAutocapitalization(.never)
@@ -277,19 +297,37 @@ struct VehicleDataSourcesView: View {
             SecureField("Password", text: $kiaConnectManager.credentials.password)
                 .textContentType(.password)
 
-            HStack {
-                Button {
-                    Task { await kiaConnectManager.refresh(cached: true) }
+            Button {
+                kiaConnectManager.reloadSharedCredentials()
+            } label: {
+                Label("Use Shared Account", systemImage: "key.horizontal.fill")
+            }
+            .disabled(kiaConnectManager.isLoading)
+
+            Button {
+                Task { await kiaConnectManager.refresh(cached: true) }
+            } label: {
+                Label(kiaConnectManager.credentials.hasStoredCredentials ? "Refresh Status" : "Sign In", systemImage: "arrow.clockwise")
+            }
+            .disabled(kiaConnectManager.isLoading || !kiaConnectManager.credentials.isReadyForLogin)
+
+            if kiaConnectManager.credentials.hasStoredCredentials {
+                Button(role: .destructive) {
+                    kiaConnectManager.clearCredentials()
                 } label: {
-                    Label("Sign In / Refresh", systemImage: "arrow.clockwise")
+                    Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
                 }
                 .disabled(kiaConnectManager.isLoading)
+            }
 
-                Spacer()
-
-                if kiaConnectManager.isLoading {
-                    ProgressView()
-                }
+            if !kiaConnectManager.credentials.hasStoredCredentials {
+                Text("Sign in here or use shared credentials from Galaxy Nav.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("Kia Maps and Galaxy Nav can share this Kia Connect account through the local keychain.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
 
             if let challenge = kiaConnectManager.mfaChallenge {
@@ -343,17 +381,44 @@ struct VehicleDataSourcesView: View {
                     }
                 }
             }
-
-            Button(role: .destructive) {
-                kiaConnectManager.clearCredentials()
-            } label: {
-                Label("Remove Kia Connect Credentials", systemImage: "trash")
-            }
         } header: {
             Text("Kia Connect US")
         } footer: {
             Text("Kia Connect uses BetterBlueKit and cached status by default. Real-time refresh can wake the car, so this app avoids polling it automatically.")
         }
+    }
+
+    private var kiaConnectStatusTitle: String {
+        if kiaConnectManager.credentials.authSession?.isValid == true {
+            return "Signed in"
+        }
+        if kiaConnectManager.credentials.hasStoredSession {
+            return "Shared account available"
+        }
+        if kiaConnectManager.credentials.isReadyForLogin {
+            return "Ready to sign in"
+        }
+        return "Not connected"
+    }
+
+    private var kiaConnectStatusSymbol: String {
+        if kiaConnectManager.credentials.authSession?.isValid == true {
+            return "checkmark.circle.fill"
+        }
+        if kiaConnectManager.credentials.hasStoredSession || kiaConnectManager.credentials.isReadyForLogin {
+            return "key.fill"
+        }
+        return "exclamationmark.circle"
+    }
+
+    private var kiaConnectStatusColor: Color {
+        if kiaConnectManager.credentials.authSession?.isValid == true {
+            return .green
+        }
+        if kiaConnectManager.credentials.hasStoredSession || kiaConnectManager.credentials.isReadyForLogin {
+            return .blue
+        }
+        return .secondary
     }
 
     private var galaxySection: some View {

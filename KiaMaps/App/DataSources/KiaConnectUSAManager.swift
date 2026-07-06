@@ -92,16 +92,33 @@ final class KiaConnectUSAManager: ObservableObject {
 
     init() {
         credentials = KiaConnectUSACredentialsCache.load()
+        statusMessage = credentials.hasStoredSession ? "Shared Kia Connect account available" : "Not connected"
     }
 
     func saveCredentials() {
         KiaConnectUSACredentialsCache.store(credentials)
     }
 
+    func reloadSharedCredentials() {
+        credentials = KiaConnectUSACredentialsCache.load()
+        if credentials.hasStoredCredentials {
+            statusMessage = "Loaded shared Kia Connect credentials"
+        } else {
+            statusMessage = "No shared Kia Connect credentials found"
+        }
+    }
+
     func clearCredentials() {
         credentials = .empty
         KiaConnectUSACredentialsCache.clear()
+        vehicles = []
+        latestTelemetry = nil
+        mfaChallenge = nil
+        #if canImport(BetterBlueKit)
+        mfaClient = nil
+        #endif
         statusMessage = "Credentials removed"
+        commandStatusMessage = "No command sent"
     }
 
     func refresh(cached: Bool = true) async {
@@ -125,9 +142,11 @@ final class KiaConnectUSAManager: ObservableObject {
         } catch let apiError as APIError where apiError.errorType == .requiresMFA {
             mfaChallenge = makeChallenge(from: apiError)
             statusMessage = "Kia Connect requires verification"
+            await notifyReauthNeeded(for: apiError)
             await sendOnlyAvailableMFAMethodIfNeeded()
         } catch {
             statusMessage = userFacingMessage(for: error)
+            await notifyReauthNeededIfNeeded(for: error)
         }
         #else
         statusMessage = "BetterBlueKit is not linked in this build"
@@ -264,9 +283,11 @@ final class KiaConnectUSAManager: ObservableObject {
         } catch let apiError as APIError where apiError.errorType == .requiresMFA {
             mfaChallenge = makeChallenge(from: apiError)
             commandStatusMessage = "Kia Connect requires verification"
+            await notifyReauthNeeded(for: apiError)
             await sendOnlyAvailableMFAMethodIfNeeded()
         } catch {
             commandStatusMessage = userFacingMessage(for: error)
+            await notifyReauthNeededIfNeeded(for: error)
         }
         #else
         commandStatusMessage = "BetterBlueKit is not linked in this build"
@@ -459,6 +480,21 @@ private extension KiaConnectUSAManager {
         default:
             return apiError.errorDescription ?? apiError.message
         }
+    }
+
+    func notifyReauthNeededIfNeeded(for error: Error) async {
+        guard let apiError = error as? APIError else { return }
+
+        switch apiError.errorType {
+        case .invalidCredentials, .requiresMFA, .kiaInvalidRequest:
+            await notifyReauthNeeded(for: apiError)
+        default:
+            break
+        }
+    }
+
+    func notifyReauthNeeded(for error: APIError) async {
+        await KiaConnectReauthNotifier.notify(reason: userFacingMessage(for: error))
     }
 }
 
